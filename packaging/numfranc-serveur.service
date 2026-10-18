@@ -1,0 +1,20 @@
+[Unit]
+Description=Nœud permanent NumFranc (sans portefeuille, sans minage)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=UTILISATEUR
+WorkingDirectory=/home/UTILISATEUR/NumFranc
+ExecStart=/home/UTILISATEUR/NumFranc/code/target/release/numfranc --serveur
+Restart=always
+RestartSec=10
+# Protections : le service ne peut rien modifier en dehors de ses données.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/UTILISATEUR/.numfranc
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

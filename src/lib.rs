@@ -1,0 +1,23 @@
+//! NumFranc (NFR) : cryptomonnaie post-quantique à preuve de travail.
+
+pub mod block;
+pub mod chain;
+pub mod config;
+pub mod emission;
+pub mod encoding;
+pub mod events;
+pub mod gui;
+pub mod i18n;
+pub mod install;
+pub mod settings;
+pub mod hashing;
+pub mod mempool;
+pub mod merkle;
+pub mod signature;
+pub mod tx;
+pub mod vault;
+pub mod wallet;
+pub mod wallet_plus;
+pub mod release;
+pub mod node;
+pub mod p2p;

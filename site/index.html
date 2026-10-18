@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NumFranc (NFR)</title>
+<meta name="description" content="NumFranc : une monnaie numérique post-quantique, minée par des ordinateurs ordinaires.">
+<link rel="icon" href="logo-256.png">
+<style>
+  :root {
+    --nuit: #0e204a; --or: #e8b23a; --fond: #f4f6fa; --texte: #1b2233; --doux: #5d6578;
+    --carte: #ffffff; --bord: #dfe3ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --fond: #12151c; --texte: #e8ebf2; --doux: #a3aabb; --carte: #1c212b; --bord: #2c3342; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond); color: var(--texte); line-height: 1.6; }
+  header { background: var(--nuit); color: #fff; padding: 56px 16px 64px; text-align: center; }
+  header img { width: 120px; height: 120px; }
+  header h1 { font-size: 2.6rem; margin: 12px 0 4px; letter-spacing: .5px; }
+  header p { margin: 0 auto; max-width: 640px; color: #c9d3ea; font-size: 1.15rem; }
+  .bouton { display: inline-block; margin-top: 24px; background: var(--or); color: var(--nuit); font-weight: 700; padding: 12px 26px; border-radius: 8px; text-decoration: none; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 48px; }
+  h2 { font-size: 1.6rem; margin: 40px 0 12px; }
+  .histoire { font-size: 1.08rem; max-width: 760px; }
+  .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .carte { background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; padding: 18px 20px; }
+  .carte h3 { margin: 0 0 6px; font-size: 1.08rem; }
+  .carte p { margin: 0; color: var(--doux); }
+  table { width: 100%; border-collapse: collapse; background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; overflow: hidden; }
+  td, th { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--bord); }
+  th { width: 40%; color: var(--doux); font-weight: 600; }
+  ol li { margin-bottom: 6px; }
+  .avertissement { border-left: 4px solid var(--or); background: var(--carte); padding: 14px 18px; border-radius: 6px; color: var(--doux); }
+  footer { text-align: center; color: var(--doux); padding: 24px 16px 40px; font-size: .9rem; }
+  code { background: var(--carte); border: 1px solid var(--bord); border-radius: 4px; padding: 1px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <img src="logo-256.png" alt="Logo NumFranc : un N tracé sur un treillis de points">
+  <h1>NumFranc</h1>
+  <p>La monnaie numérique pensée pour l'après-ordinateur quantique, minée par des ordinateurs ordinaires.</p>
+  <a class="bouton" href="#telecharger">Télécharger</a>
+</header>
+
+<main>
+  <h2>L'histoire</h2>
+  <div class="histoire">
+    <p>Bitcoin a montré qu'une monnaie pouvait exister sans banque. Mais il a deux faiblesses que tout le monde connaît&nbsp;: ses signatures pourront un jour être cassées par un ordinateur quantique, et son minage est devenu l'affaire d'usines remplies de machines spécialisées.</p>
+    <p>NumFranc est parti d'une question simple&nbsp;: <em>et si on recommençait, en réglant ces deux problèmes dès le premier bloc&nbsp;?</em> Chaque paiement est signé avec ML-DSA, le standard post-quantique choisi par le NIST en 2024. Et chaque essai de minage oblige l'ordinateur à remplir et relire de la mémoire, ce qui rend les machines spécialisées presque inutiles&nbsp;: le PC de votre chambre compte autant que celui d'une usine.</p>
+    <p>Le logo raconte cette histoire&nbsp;: un «&nbsp;N&nbsp;» tracé sur un <strong>treillis de points</strong>. C'est sur ces treillis mathématiques que repose la sécurité post-quantique de ML-DSA.</p>
+  </div>
+
+  <h2>Ce qui le rend différent</h2>
+  <div class="grille">
+    <div class="carte"><h3>Post-quantique dès le départ</h3><p>Signatures ML-DSA-87 (niveau 5 du NIST) et empreintes SHA3-512.</p></div>
+    <div class="carte"><h3>Minage pour tous</h3><p>Algorithme Argon2d gourmand en mémoire : un ordinateur ordinaire reste compétitif.</p></div>
+    <div class="carte"><h3>Messages et coffres</h3><p>Un message joint à chaque paiement, et des fonds verrouillés jusqu'à une vraie date de calendrier.</p></div>
+    <div class="carte"><h3>Adresses lisibles</h3><p>Une adresse permanente de 77 caractères et son empreinte de 4 mots pour éviter les erreurs.</p></div>
+    <div class="carte"><h3>Portefeuille blindé</h3><p>Chiffré deux fois, un code séparé pour dépenser, et un code de secours en 3 morceaux (2 suffisent).</p></div>
+    <div class="carte"><h3>Sans serveur central</h3><p>Les ordinateurs se trouvent tout seuls, sur le réseau local comme à l'autre bout du monde.</p></div>
+  </div>
+
+  <h2>Les chiffres</h2>
+  <table>
+    <tr><th>Nombre total</th><td>69 100 000 NFR, jamais un de plus</td></tr>
+    <tr><th>Un bloc toutes les</th><td>691 secondes (environ 11 minutes)</td></tr>
+    <tr><th>Récompense</th><td>6,91 NFR puis 69,10 NFR par bloc, puis −10 % tous les 100 000 blocs</td></tr>
+    <tr><th>Fin de la création</th><td>dans environ 98 ans</td></tr>
+    <tr><th>Protection contre les attaques à 51 %</th><td>choix par travail cumulé, réécriture limitée à 10 blocs, points de contrôle</td></tr>
+  </table>
+
+  <h2 id="telecharger">Télécharger et commencer</h2>
+  <ol>
+    <li>Téléchargez NumFranc pour votre système (Mac, Windows ou Linux).</li>
+    <li>Vérifiez l'empreinte du fichier avec <code>SHA3SUMS.txt</code> (SHA3-512).</li>
+    <li>Lancez-le : une fenêtre s'ouvre et vous guide.</li>
+    <li>Choisissez vos deux mots de passe et recopiez les 3 morceaux de votre code de secours sur papier.</li>
+    <li>Votre ordinateur rejoint le réseau et commence à miner.</li>
+  </ol>
+  <p class="avertissement">Les versions prêtes à l'emploi arrivent bientôt. NumFranc est un projet d'apprentissage <strong>non audité</strong> : ne l'utilisez pas pour de l'argent réel.</p>
+</main>
+
+<footer>
+  NumFranc — code ouvert et vérifiable par tous. Le nom et le logo ne sont liés à aucun État ni à aucune banque.
+</footer>
+</body>
+</html>

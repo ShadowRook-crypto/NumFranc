@@ -1,0 +1,113 @@
+NumFranc (NFR) — mode d'emploi
+==============================
+
+1. LANCER
+   - Mac     : clic droit sur « Lancer NumFranc.command » > Ouvrir (la 1re fois), puis double-clic.
+   - Windows : double-clic sur « Lancer NumFranc.bat ».
+   - Linux   : dans un terminal, ./lancer-numfranc.sh
+   Si aucune version toute prête n'est fournie pour votre machine, le lanceur installe
+   Rust et compile NumFranc automatiquement (une seule fois, quelques minutes).
+
+2. AU PREMIER LANCEMENT
+   Une fenêtre s'ouvre (option --console pour rester en mode texte).
+   Vous choisissez DEUX secrets différents :
+   - le MOT DE PASSE D'OUVERTURE (12 caractères minimum), demandé à chaque démarrage :
+     il permet de voir le solde, de miner et de recevoir ;
+   - le CODE DE DÉPENSE (16 caractères minimum), demandé à chaque envoi :
+     il protège la clé secrète elle-même. Le plus sûr : 4 ou 5 mots au hasard
+     avec un chiffre et un symbole (ex. Girafe#Tambour-Nuage7).
+   Le portefeuille est chiffré deux fois (AES-256-GCM puis XChaCha20-Poly1305),
+   avec des clés tirées des mots de passe par Argon2id (256 Mio pour l'ouverture,
+   1 Gio et 4 passes pour le code de dépense : chaque essai d'un voleur coûte cher).
+   Les mots de passe ne sont enregistrés nulle part, même chiffrés.
+   Puis le CODE DE SECOURS s'affiche en 3 MORCEAUX : recopiez chacun sur un papier
+   différent, rangé dans un endroit différent. 2 morceaux sur 3 suffisent pour tout
+   récupérer (même si vous oubliez vos mots de passe) ; un seul morceau ne sert à rien.
+   Un ancien portefeuille (v0.2, v0.3) est conservé : NumFranc vous demande simplement
+   de choisir vos mots de passe pour le chiffrer.
+   Le minage démarre tout seul, sur la moitié des cœurs de l'ordinateur.
+   Le minage utilise 4 Mio de mémoire par cœur (algorithme Argon2d) : un PC ordinaire
+   reste compétitif face aux machines spécialisées. Il chauffe l'ordinateur : tapez
+   « minage off » pour l'arrêter, ou lancez avec --coeurs 1 pour le ralentir.
+
+3. REJOINDRE LE RÉSEAU
+   Sur le même Wi-Fi ou réseau local : rien à faire, les nœuds se trouvent tout seuls.
+   Au démarrage, le minage attend 20 secondes et rattrape la chaîne des autres avant de miner.
+   Pour un nœud sur Internet : écrivez son adresse dans noeuds.txt (ex. monnoeud.fr:6910),
+   ou tapez dans NumFranc :  connecter monnoeud.fr:6910
+   Pour accepter des connexions depuis Internet, ouvrez le port TCP 6910 sur la box.
+
+4. LA FENÊTRE (français ou anglais)
+   Accueil (solde, minage, réseau, graphique des gains sur 7 ou 30 jours),
+   Recevoir (adresse, empreinte, QR code), Envoyer, Historique (export en tableur CSV),
+   Carnet d'adresses, Explorateur (chaque bloc, ses paiements et messages publics),
+   Réseau, Sécurité (code de secours, changement des mots de passe),
+   Émission (combien de NFR existent, combien restent, paliers à venir),
+   Explications (mode pas à pas : un bloc ou une transaction),
+   Avancé (gel, paiements annulables, pseudos, groupes à plusieurs signatures,
+   preuve de réserve, demande de paiement, démarrage automatique),
+   Réglages (langue, thème clair ou sombre, couleur, minage selon un horaire nuit/jour,
+   ajout de NumFranc au menu des applications pour le lancer sans Terminal).
+   EMPREINTE : chaque adresse a une empreinte de 4 mots + une couleur
+   (ex. « jasmin gorille horloge jonque — rouge »). Vérifiez-la avec la personne
+   (par téléphone par exemple) avant d'enregistrer son adresse : un virus peut
+   remplacer une adresse copiée. NumFranc prévient si une adresse n'est pas dans le carnet.
+
+5. COMMANDES DU MODE TEXTE (lancement avec --console, tapez « aide »)
+   statut, solde, adresse, adresse neuve, envoyer, historique, pairs, minage on/off, secours, quitter
+   et, depuis la v0.6 : emission, gel, degel, protection, retenus, annuler, pseudos, pseudo,
+   groupe, preuve, demande, demarrage (la commande « aide » les décrit toutes).
+
+   Recevoir : « adresse » affiche votre adresse permanente (NFR1-XXXX-...). Elle ne change jamais :
+              donnez-la à tout le monde. « adresse neuve » en crée une à usage unique.
+   Envoyer  : envoyer NFR1-XXXX-... 12,5
+   Avec une date de déblocage : envoyer NFR1-XXXX-... 5 verrou 30j
+              (min = minutes, h = heures, j = jours, sem, mois, an ; maximum 10 ans).
+              C'est une vraie date de calendrier : les fonds sont gelés pour le destinataire
+              jusqu'à cette date (environ 1 h de marge), et personne ne peut les débloquer avant.
+              Envoyé à votre propre adresse, c'est un coffre-fort.
+   Avec un message : envoyer NFR1-XXXX-... 5 message Bon anniversaire !
+              Le message est PUBLIC et gravé à vie dans la chaîne (140 octets maximum,
+              les accents comptent double). N'y mettez rien de privé.
+   Les deux ensemble : envoyer NFR1-XXXX-... 5 verrou 30j message Pour tes 16 ans
+
+   Carnet : carnet, carnet ajouter NOM ADRESSE, carnet retirer NOM ;
+   envoyer accepte un nom du carnet : envoyer Maman 5
+   Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
+
+6. NOUVEAUTÉS DE LA v0.6
+   - Pseudos : « alice.nfr » à la place de l'adresse de 77 caractères (inscrit dans la chaîne ;
+     frais uniques : 100 NFR pour 3 lettres, 25 pour 4, 5 pour 5 à 7, 1 à partir de 8).
+     Dans Envoyer, on peut écrire le pseudo, une adresse, un nom du carnet ou un lien nfr:….
+   - Délai d'annulation : au-dessus d'un montant choisi, un paiement est retenu pendant un délai
+     (de 1 s à 30 jours) ; vous (ou un gardien) pouvez l'annuler, le destinataire pas encore le dépenser.
+   - Multi-signature M sur N (ex. 2 sur 3) : groupes à plusieurs clés, avec propositions à signer à tour de rôle.
+   - Gel du portefeuille : la clé secrète est effacée de l'ordinateur ; dégel avec les trois codes
+     (mot de passe d'ouverture, nouveau code de dépense, 2 morceaux de secours).
+   - Demande de paiement (lien nfr:… et QR code), preuve de réserve, tableau de bord de l'émission,
+     mode explication, démarrage automatique (fenêtre réduite), verrou « une seule copie ouverte ».
+   - NOUVELLE CHAÎNE : le format des transactions a changé (protocole 4). NumFranc met tout seul
+     l'ancienne chaîne de côté (fichier blocks.ancien) et repart de zéro. Votre portefeuille est conservé.
+     Tous les nœuds du réseau doivent passer à la v0.6 ; une v0.5 ne peut plus se connecter.
+   - Le fichier du portefeuille passe au format 04 à la première ouverture : une v0.5 ne pourra plus le lire.
+     Faites une copie de wallet.dat avant la mise à jour si vous voulez pouvoir revenir en arrière.
+
+7. BON À SAVOIR
+   - Une récompense de minage devient dépensable après 100 blocs.
+   - Un paiement est considéré comme sûr après 6 blocs.
+   - Les données sont dans : Mac ~/Library/Application Support/NumFranc,
+     Linux ~/.numfranc, Windows %APPDATA%\NumFranc
+   - Vérifiez les empreintes SHA3-512 avant d'utiliser une version téléchargée :
+     python3 sha3sum.py --check SHA3SUMS.txt (dans le dossier NumFranc ; tout doit afficher OK).
+     La signature SHA3SUMS.txt.sig prouve que ce manifeste vient de l'auteur : vérifiez-la
+     avec la clé publique cle-publique.txt (commande « verifier » de signer_version, voir README).
+   - Nœud permanent (serveur, sans portefeuille ni minage) : voir SERVEUR.txt.
+
+MISE À JOUR depuis une ancienne version :
+   - depuis la v0.5 ou avant : voir « NOUVEAUTÉS DE LA v0.6 » (nouvelle chaîne, automatique) ;
+   - depuis la v0.2 (adresses NFR1-XXXX) : le portefeuille est conservé, mais la chaîne
+     repart de zéro (nouvel algorithme de minage) : renommez le fichier blocks.dat
+     du dossier de données en blocks-ancien.dat ;
+   - depuis la v0.1 (adresses NFR1 + 128 caractères) : déplacez tout le dossier de données.
+
+Projet d'apprentissage non audité : ne pas utiliser pour de l'argent réel.

@@ -1,0 +1,20 @@
+/target
+/dist
+/dist-bin
+.DS_Store
+*.db
+*.cookie
+wallet*.dat
+*.zip
+*.ancien*
+numfranc.lock
+blocks.dat
+peers.txt
+reglages.txt
+*.pem
+.env
+# Clé de signature : ne jamais publier
+*.key
+*.age
+*.dmg
+*morceau*

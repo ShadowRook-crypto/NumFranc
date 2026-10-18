@@ -1,0 +1,6 @@
+# Nœuds du réseau NumFranc auxquels se connecter au démarrage.
+# Un par ligne, au format HÔTE:PORT. Les lignes commençant par # sont ignorées.
+# Exemple sur le réseau de la maison :
+# 192.168.1.35:6910
+# Exemple sur Internet (adresse publique ou nom de domaine du nœud permanent) :
+# monnoeud.example.fr:6910
