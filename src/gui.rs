@@ -1789,31 +1789,39 @@ impl App {
     }
 }
 
-/// Petit logo dessiné (hexagone, treillis et « N »), utilisé dans la barre du haut.
+/// Petit logo dessiné (six bandes bleues et rouges en hexagone, « N » au centre),
+/// utilisé dans la barre du haut. Mêmes formes que assets/logo.svg (repère 512 × 512).
 fn draw_logo(painter: &egui::Painter, r: egui::Rect) {
-    let c = r.center();
-    let rad = r.width() / 2.0;
-    let hex = |k: f32| -> Vec<egui::Pos2> {
-        (0..6)
-            .map(|i| {
-                let a = (60.0 * i as f32 - 90.0).to_radians();
-                egui::pos2(c.x + k * a.cos(), c.y + k * a.sin())
-            })
-            .collect()
-    };
-    // Mêmes couleurs que assets/logo.svg : bleu marine #002654, blanc, bleu clair #AFC8E6, rouge #E1000F.
+    let k = r.width().min(r.height()) / 512.0;
+    let o = r.center() - egui::vec2(256.0 * k, 256.0 * k);
+    let p = |x: f32, y: f32| egui::pos2(o.x + x * k, o.y + y * k);
     let marine = Color32::from_rgb(0, 38, 84);
-    painter.add(egui::Shape::convex_polygon(hex(rad), marine, egui::Stroke::NONE));
-    painter.add(egui::Shape::convex_polygon(hex(rad * 0.92), Color32::WHITE, egui::Stroke::NONE));
-    let s = rad * 0.78;
-    let (x0, y0) = (c.x - s / 2.0, c.y - s / 2.0);
-    let pts = [egui::pos2(x0, y0 + s), egui::pos2(x0, y0), egui::pos2(x0 + s, y0 + s), egui::pos2(x0 + s, y0)];
-    let stroke = egui::Stroke::new(rad * 0.13, marine);
-    painter.line_segment([pts[0], pts[1]], stroke);
-    painter.line_segment([pts[1], pts[2]], stroke);
-    painter.line_segment([pts[2], pts[3]], stroke);
-    for p in pts {
-        painter.circle(p, rad * 0.09, Color32::WHITE, egui::Stroke::new(rad * 0.045, marine));
+    let rouge = Color32::from_rgb(225, 0, 15);
+    let blanc = egui::Stroke::new(7.0 * k, Color32::WHITE);
+    // Fond blanc de l'hexagone (le logo reste lisible en thème sombre).
+    let fond = [(256.0, 28.0), (453.5, 142.0), (453.5, 370.0), (256.0, 484.0), (58.5, 370.0), (58.5, 142.0)];
+    painter.add(egui::Shape::convex_polygon(fond.iter().map(|&(x, y)| p(x, y)).collect(), Color32::WHITE, blanc));
+    // Les six bandes qui tournent, séparées par un filet blanc.
+    let bandes: [[(f32, f32); 5]; 6] = [
+        [(256.0, 90.0), (309.7, 59.0), (453.5, 142.0), (453.5, 204.0), (399.8, 173.0)],
+        [(399.8, 173.0), (453.5, 204.0), (453.5, 370.0), (399.8, 401.0), (399.8, 339.0)],
+        [(399.8, 339.0), (399.8, 401.0), (256.0, 484.0), (202.3, 453.0), (256.0, 422.0)],
+        [(256.0, 422.0), (202.3, 453.0), (58.5, 370.0), (58.5, 308.0), (112.2, 339.0)],
+        [(112.2, 339.0), (58.5, 308.0), (58.5, 142.0), (112.2, 111.0), (112.2, 173.0)],
+        [(112.2, 173.0), (112.2, 111.0), (256.0, 28.0), (309.7, 59.0), (256.0, 90.0)],
+    ];
+    for (i, b) in bandes.iter().enumerate() {
+        let c = if i % 2 == 0 { marine } else { rouge };
+        painter.add(egui::Shape::convex_polygon(b.iter().map(|&(x, y)| p(x, y)).collect(), c, blanc));
+    }
+    // Le « N » (police Unbounded, découpé en trois morceaux convexes).
+    let n: [&[(f32, f32)]; 3] = [
+        &[(185.97, 177.0), (222.87, 177.0), (222.87, 300.0), (185.97, 300.0)],
+        &[(288.96, 177.0), (326.03, 177.0), (326.03, 300.0), (288.96, 300.0)],
+        &[(222.87, 218.0), (222.87, 177.0), (235.34, 177.0), (288.96, 256.54), (288.96, 300.0), (278.14, 300.0)],
+    ];
+    for m in n {
+        painter.add(egui::Shape::convex_polygon(m.iter().map(|&(x, y)| p(x, y)).collect(), marine, egui::Stroke::NONE));
     }
 }
 

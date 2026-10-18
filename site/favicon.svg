@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Logo NumFranc">
+<title>NumFranc (NFR)</title>
+<polygon points="256,28 453.5,142 453.5,370 256,484 58.5,370 58.5,142" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="7" stroke-linejoin="miter"/>
+<g stroke="#FFFFFF" stroke-width="7" stroke-linejoin="miter">
+<polygon points="256,90 309.7,59 453.5,142 453.5,204 399.8,173" fill="#002654"/>
+<polygon points="399.8,173 453.5,204 453.5,370 399.8,401 399.8,339" fill="#E1000F"/>
+<polygon points="399.8,339 399.8,401 256,484 202.3,453 256,422" fill="#002654"/>
+<polygon points="256,422 202.3,453 58.5,370 58.5,308 112.2,339" fill="#E1000F"/>
+<polygon points="112.2,339 58.5,308 58.5,142 112.2,111 112.2,173" fill="#002654"/>
+<polygon points="112.2,173 112.2,111 256,28 309.7,59 256,90" fill="#E1000F"/>
+</g>
+<path d="M288.96 256.54V177H326.03V300H278.14L222.87 218V300H185.97V177H235.34Z" fill="#002654"/>
+</svg>
