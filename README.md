@@ -67,7 +67,7 @@ Limite connue : si le réseau est coupé en deux pendant plus de 10 blocs, les d
 **Contre la falsification du logiciel**
 - Code public et vérifiable.
 - Chaque version publiée est accompagnée d'empreintes **SHA3-512** (`SHA3SUMS.txt`, vérifiables avec `python3 sha3sum.py --check SHA3SUMS.txt`), la même famille de hachage que le reste de NumFranc. Chaque version est aussi **signée** (`SHA3SUMS.txt.sig`, SLH-DSA-SHAKE-128s, norme FIPS 205) : la signature prouve que le manifeste vient de l'auteur, pas d'un tiers. Les transactions, elles, restent en ML-DSA-87.
-- **Compilation reproductible** : `./scripts/build-reproductible.sh CIBLE` (ex. `x86_64-unknown-linux-musl`) doit redonner exactement le même programme que celui publié (vérifié pour Linux x86-64) ; comparez l'empreinte affichée avec la ligne correspondante de `SHA3SUMS.txt`. La CI le vérifie à chaque version en compilant deux fois.
+- **Compilation reproductible** : `./scripts/build-reproductible.sh CIBLE` (ex. `x86_64-unknown-linux-gnu`) doit redonner exactement le même programme que celui publié (vérifié pour Linux x86-64) ; comparez l'empreinte affichée avec la ligne correspondante de `SHA3SUMS.txt`. La CI le vérifie à chaque version en compilant deux fois.
 - **Mises à jour** : le bouton « Vérifier les mises à jour » (Réglages) ne propose une nouvelle version que si sa signature est valide.
 
 **Fonctions de la v0.6**

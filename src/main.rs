@@ -86,6 +86,8 @@ fn parse_args() -> Result<Options, String> {
             "--sans-minage" | "--no-mine" => o.mine = false,
             "--dossier" | "--datadir" => o.data_dir = PathBuf::from(val()?),
             "--console" | "--serveur" | "--server" | "--menu" | "--reduit" => {}
+            // Ancien macOS : numéro de processus ajouté par le Finder au lancement d'une app.
+            l if l.starts_with("-psn_") => {}
             // Lien de paiement cliqué (nfr:…) : transmis à la fenêtre, voir numfranc::install::hand_over_link.
             l if l.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("nfr:")) => {
                 // Le lien est toujours le dernier argument : rien ne doit pouvoir s'y ajouter
@@ -510,8 +512,15 @@ fn main() {
             std::process::exit(2);
         }
     };
-    // Fichier noeuds.txt (à côté du lanceur) : un nœud par ligne, ex. 192.168.1.35:6910
     let mut opts = opts;
+    // macOS : lancé depuis l'app NumFranc.app (Launchpad, Spotlight, lien nfr:), sans --dossier.
+    let explicit = std::env::args().any(|a| a == "--dossier" || a == "--datadir");
+    if let Some(data) = numfranc::install::mac_bundle_launch()
+        && !explicit
+    {
+        opts.data_dir = data;
+    }
+    // Fichier noeuds.txt (à côté du lanceur) : un nœud par ligne, ex. 192.168.1.35:6910
     if let Ok(list) = std::fs::read_to_string("noeuds.txt") {
         for l in list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
             opts.peers.push(l.to_string());

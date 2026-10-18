@@ -1,14 +1,14 @@
 #!/bin/bash
 # Compilation reproductible : deux personnes qui lancent ce script sur le même code
 # obtiennent exactement le même programme (même empreinte SHA3-512).
-#   Utilisation : ./scripts/build-reproductible.sh CIBLE      (ex. x86_64-unknown-linux-musl)
+#   Utilisation : ./scripts/build-reproductible.sh CIBLE      (ex. x86_64-unknown-linux-gnu)
 # Ce qui rend le résultat identique :
 #   - la version de Rust est fixée (rust-toolchain.toml) et les dépendances aussi (Cargo.lock, --locked) ;
 #   - les chemins propres à chaque ordinateur (dossier du code, de Cargo, de Rust) sont remplacés
 #     par des chemins neutres dans le programme (--remap-path-prefix) ;
 #   - pas de compilation incrémentale, et une date fixe (celle du dernier commit).
 set -euo pipefail
-CIBLE="${1:?indique la cible, ex. x86_64-unknown-linux-musl}"
+CIBLE="${1:?indique la cible, ex. x86_64-unknown-linux-gnu}"
 cd "$(dirname "$0")/.."
 ICI="$(pwd -W 2>/dev/null || pwd)"
 CARGO_DIR="${CARGO_HOME:-$HOME/.cargo}"

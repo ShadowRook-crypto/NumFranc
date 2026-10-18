@@ -395,16 +395,16 @@ impl Wallet {
             let addr: Address = r.array().map_err(e)?;
             old.push((addr, revealed));
         }
-        // On garde au moins toutes les adresses déjà utilisées, puis la réserve habituelle.
-        if n > POOL_SIZE {
-            w.fill_pool(&seed, n);
+        // On garde au moins toutes les adresses déjà utilisées, plus une réserve d'adresses neuves.
+        if n >= POOL_SIZE {
+            w.fill_pool(&seed, n + POOL_SIZE);
         }
         for (i, (a, rev)) in old.iter().enumerate() {
             if w.keys[i].0 == *a {
                 w.keys[i].1 = *rev;
             }
         }
-        w.next = n.max(1);
+        w.next = n.clamp(1, w.keys.len() - 1);
         w.mining = if mining == u32::MAX || mining as usize >= w.keys.len() { None } else { Some(mining as usize) };
         Ok(w)
     }
@@ -422,7 +422,8 @@ impl Wallet {
             seed: None,
             keys: Vec::with_capacity(n),
             by_addr: HashMap::new(),
-            next: next.clamp(1, n),
+            // L'indice de la prochaine adresse doit désigner une adresse existante (au plus n - 1).
+            next: next.clamp(1, n.saturating_sub(1).max(1)),
             mining: None,
             contacts: Vec::new(),
             path: None,
@@ -632,8 +633,9 @@ impl Wallet {
     }
 
     pub(crate) fn new_key(&mut self) -> Address {
-        let i = self.next;
-        self.next = if self.next + 1 >= self.keys.len() { 1 } else { self.next + 1 };
+        // Garde-fou : un indice hors de la liste (ancien fichier) repart au début de la réserve.
+        let i = if self.next < self.keys.len() { self.next } else { 1.min(self.keys.len() - 1) };
+        self.next = if i + 1 >= self.keys.len() { 1 } else { i + 1 };
         self.keys[i].0
     }
 
@@ -1141,5 +1143,31 @@ mod tests {
         let c = Chain::with_genesis(test_genesis());
         let mut w = Wallet::from_seed([3; 32]);
         assert!(w.create_payment(&c, &Mempool::default(), [1; 32], 1, &PaymentOptions::default(), None).is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_indice_adresse {
+    use super::*;
+
+    /// v1.0.1 : un portefeuille importé d'une ancienne version pouvait garder un indice
+    /// « prochaine adresse » égal au nombre d'adresses, et le minage plantait (index hors limites).
+    #[test]
+    fn indice_hors_liste_ne_plante_plus() {
+        let mut w = Wallet::from_seed([5; 32]);
+        let n = w.keys.len();
+        w.next = n; // état d'un fichier ancien
+        let a = w.mining_address();
+        assert!(w.by_addr.contains_key(&a));
+        assert!(w.next >= 1 && w.next < n);
+        // Relecture d'un fichier enregistré avec cet indice : il est ramené dans la liste.
+        let mut w2 = Wallet::from_seed([6; 32]);
+        w2.next = w2.keys.len();
+        let lu = Wallet::decode_view(&w2.encode_view()).unwrap();
+        assert!(lu.next < lu.keys.len());
+        for _ in 0..(3 * n) {
+            let mut l = Wallet::decode_view(&w2.encode_view()).unwrap();
+            let _ = l.new_key();
+        }
     }
 }

@@ -71,6 +71,7 @@ fn check_desktop_path(s: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)] // plus utilisé par l'app macOS depuis la v1.0.1, gardé (et testé) pour les scripts
 /// Bash : entre apostrophes, rien n'est interprété ; une apostrophe s'écrit '\''.
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
@@ -123,15 +124,26 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
         std::fs::create_dir_all(app.join("MacOS")).map_err(|e| e.to_string())?;
         std::fs::create_dir_all(app.join("Resources")).map_err(|e| e.to_string())?;
         std::fs::write(app.join("Resources/NumFranc.icns"), icns(LOGO_PNG_256, LOGO_PNG_512)).map_err(|e| e.to_string())?;
-        let script = format!(
-            "#!/bin/bash\ncd {}\nexec {} --dossier {}\n",
-            sh_quote(&workdir.display().to_string()),
-            sh_quote(&exe.display().to_string()),
-            sh_quote(&data)
-        );
+        // macOS n'accepte comme app qu'un VRAI programme rangé dans l'app (pas un script qui en lance
+        // un autre ailleurs, ni un raccourci) : sinon il la ferme et ne lui envoie pas les liens nfr:.
+        // On copie donc le programme dans l'app ; au démarrage, l'app se met à jour toute seule
+        // si le programme du dossier NumFranc a changé (voir mac_bundle_launch).
+        let (workdir, source) = match mac_bundle_info(&exe) {
+            Some((w, _)) => {
+                let src = w.join(mac_binary_name());
+                (w, src)
+            }
+            None => (workdir, exe.clone()),
+        };
         let launcher = app.join("MacOS/NumFranc");
-        std::fs::write(&launcher, script).map_err(|e| e.to_string())?;
-        set_executable(&launcher);
+        if source.canonicalize().ok() != launcher.canonicalize().ok() && source.is_file() {
+            let tmp = app.join("MacOS/.NumFranc.nouveau");
+            std::fs::copy(&source, &tmp).map_err(|e| e.to_string())?;
+            set_executable(&tmp);
+            std::fs::rename(&tmp, &launcher).map_err(|e| e.to_string())?;
+        }
+        // Dossier du lanceur (noeuds.txt) et dossier des données, relus au démarrage de l'app.
+        std::fs::write(app.join("Resources/lanceur.txt"), format!("{}\n{}\n", workdir.display(), data)).map_err(|e| e.to_string())?;
         let plist = format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>CFBundleName</key><string>NumFranc</string>\n<key>CFBundleDisplayName</key><string>NumFranc</string>\n<key>CFBundleIdentifier</key><string>org.numfranc.app</string>\n<key>CFBundleExecutable</key><string>NumFranc</string>\n<key>CFBundleIconFile</key><string>NumFranc</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleShortVersionString</key><string>{v}</string>\n<key>CFBundleVersion</key><string>{v}</string>\n<key>LSMinimumSystemVersion</key><string>11.0</string>\n<key>LSApplicationCategoryType</key><string>public.app-category.finance</string>\n<key>NSHumanReadableCopyright</key><string>ShadowRook — licence MIT</string>\n<key>NSHighResolutionCapable</key><true/>\n<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>org.numfranc.paiement</string><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLSchemes</key><array><string>nfr</string></array></dict></array>\n</dict></plist>\n",
             v = env!("CARGO_PKG_VERSION")
@@ -238,6 +250,69 @@ pub fn take_link(data_dir: &Path) -> Option<String> {
     Some(link)
 }
 
+// ---------- macOS : l'app NumFranc.app ----------
+
+/// Nom du programme macOS dans le dossier NumFranc, selon le processeur (comme `uname -m`).
+fn mac_binary_name() -> String {
+    let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { std::env::consts::ARCH };
+    format!("bin/numfranc-macos-{arch}")
+}
+
+/// Si `exe` est le programme rangé dans une app NumFranc.app, renvoie (dossier du lanceur, dossier des données)
+/// lus dans Contents/Resources/lanceur.txt.
+fn mac_bundle_info(exe: &Path) -> Option<(PathBuf, String)> {
+    let macos = exe.parent()?;
+    if !macos.ends_with("Contents/MacOS") {
+        return None;
+    }
+    let text = std::fs::read_to_string(macos.parent()?.join("Resources/lanceur.txt")).ok()?;
+    let mut lines = text.lines();
+    let workdir = PathBuf::from(lines.next()?.trim());
+    let data = lines.next()?.trim().to_string();
+    if workdir.as_os_str().is_empty() || data.is_empty() {
+        return None;
+    }
+    Some((workdir, data))
+}
+
+/// macOS, au démarrage : si NumFranc a été lancé depuis son app, se placer dans le dossier du lanceur et
+/// renvoyer le dossier des données. Si le programme du dossier NumFranc est plus récent (mise à jour
+/// installée), l'app se remplace par lui puis redémarre, une seule fois.
+#[cfg(unix)]
+pub fn mac_bundle_launch() -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let exe = std::env::current_exe().ok()?;
+    let exe = exe.canonicalize().unwrap_or(exe);
+    let (workdir, data) = mac_bundle_info(&exe)?;
+    let source = workdir.join(mac_binary_name());
+    let differs = match (std::fs::metadata(&source), std::fs::metadata(&exe)) {
+        (Ok(a), Ok(b)) if a.len() != b.len() => true,
+        (Ok(_), Ok(_)) => std::fs::read(&source).ok() != std::fs::read(&exe).ok(),
+        _ => false,
+    };
+    if differs && std::env::var_os("NUMFRANC_APP_MAJ").is_none() {
+        let tmp = exe.with_file_name(".NumFranc.nouveau");
+        if std::fs::copy(&source, &tmp).is_ok() {
+            set_executable(&tmp);
+            if std::fs::rename(&tmp, &exe).is_ok() {
+                use std::os::unix::process::CommandExt;
+                // Même processus (exec) : macOS continue de reconnaître l'app.
+                let err = std::process::Command::new(&exe).args(std::env::args_os().skip(1)).env("NUMFRANC_APP_MAJ", "1").exec();
+                eprintln!("Redémarrage après mise à jour impossible : {err}");
+            }
+        }
+    }
+    let _ = std::env::set_current_dir(&workdir);
+    Some(PathBuf::from(data))
+}
+
+#[cfg(not(unix))]
+pub fn mac_bundle_launch() -> Option<PathBuf> {
+    None
+}
+
 const AUTOSTART_NAME: &str = "numfranc";
 
 fn autostart_path() -> Result<PathBuf, String> {
@@ -340,6 +415,26 @@ mod tests {
 #[cfg(test)]
 mod tests_lien {
     use super::*;
+
+    #[test]
+    fn app_macos_retrouve_son_dossier() {
+        let base = std::env::temp_dir().join(format!("nfr-app-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let app = base.join("NumFranc.app/Contents");
+        std::fs::create_dir_all(app.join("MacOS")).unwrap();
+        std::fs::create_dir_all(app.join("Resources")).unwrap();
+        let exe = app.join("MacOS/NumFranc");
+        // Sans lanceur.txt : ce n'est pas une app NumFranc préparée.
+        assert_eq!(mac_bundle_info(&exe), None);
+        std::fs::write(app.join("Resources/lanceur.txt"), "/Users/x/NumFranc/NumFranc\n/Users/x/Library/Application Support/NumFranc\n").unwrap();
+        assert_eq!(
+            mac_bundle_info(&exe),
+            Some((PathBuf::from("/Users/x/NumFranc/NumFranc"), "/Users/x/Library/Application Support/NumFranc".to_string()))
+        );
+        // Un programme rangé ailleurs n'est pas concerné.
+        assert_eq!(mac_bundle_info(&base.join("bin/numfranc")), None);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn chemins_pieges_neutralises() {

@@ -75,7 +75,15 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. NOUVEAUTÉS DE LA v1.0.0
+6. CORRECTIONS DE LA v1.0.1
+   - Portefeuille : un ancien portefeuille (importé d'une vieille version) pouvait faire planter
+     le minage environ 30 secondes après le démarrage. Corrigé ; aucun fonds n'était en danger.
+   - Linux : la fenêtre s'ouvre enfin (le programme utilise maintenant les bibliothèques d'affichage du système).
+   - Mac : l'app NumFranc contient désormais le vrai programme. macOS la garde ouverte et lui
+     envoie les liens nfr:… ; elle se met à jour toute seule quand vous installez une nouvelle version.
+     Après la mise à jour, cliquez UNE fois sur « Ajouter NumFranc au menu des applications » (Réglages).
+
+7. NOUVEAUTÉS DE LA v1.0.0
    - Nouveau logo, et une fenêtre plus simple : 6 onglets, le reste dans « Plus… » ou le mode expert.
    - Liens de paiement cliquables : un clic sur un lien nfr:… ouvre NumFranc sur « Envoyer », déjà rempli
      (rien n'est envoyé sans votre vérification et votre code de dépense). Pour l'activer, cliquez une fois
@@ -88,7 +96,7 @@ NumFranc (NFR) — mode d'emploi
      locktime à 0). Elles ne changent rien aux blocs déjà minés ; mettez quand même à jour vos nœuds.
    - Aucun changement de chaîne ni de portefeuille : les v0.7 et v1.0.0 se parlent.
 
-7. NOUVEAUTÉS DE LA v0.6
+8. NOUVEAUTÉS DE LA v0.6
    - Pseudos : « alice.nfr » à la place de l'adresse de 77 caractères (inscrit dans la chaîne ;
      frais uniques : 100 NFR pour 3 lettres, 25 pour 4, 5 pour 5 à 7, 1 à partir de 8).
      Dans Envoyer, on peut écrire le pseudo, une adresse, un nom du carnet ou un lien nfr:….
@@ -105,7 +113,7 @@ NumFranc (NFR) — mode d'emploi
    - Le fichier du portefeuille passe au format 04 à la première ouverture : une v0.5 ne pourra plus le lire.
      Faites une copie de wallet.dat avant la mise à jour si vous voulez pouvoir revenir en arrière.
 
-8. BON À SAVOIR
+9. BON À SAVOIR
    - Une récompense de minage devient dépensable après 100 blocs.
    - Un paiement est considéré comme sûr après 6 blocs.
    - Les données sont dans : Mac ~/Library/Application Support/NumFranc,

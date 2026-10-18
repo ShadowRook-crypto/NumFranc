@@ -28,16 +28,16 @@ jobs:
     strategy:
       matrix:
         include:
-          - { os: ubuntu-latest,    target: x86_64-unknown-linux-musl,  name: numfranc-linux-x86_64 }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, name: numfranc-linux-aarch64 }
+          # Linux : version « normale » (glibc), seule capable de charger l'affichage (Wayland, X11).
+          # Compilée sur Ubuntu 22.04 pour fonctionner aussi sur les distributions un peu anciennes.
+          - { os: ubuntu-22.04,     target: x86_64-unknown-linux-gnu,   name: numfranc-linux-x86_64 }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu,  name: numfranc-linux-aarch64 }
           - { os: macos-14,         target: aarch64-apple-darwin,       name: numfranc-macos-arm64 }
           - { os: macos-14,         target: x86_64-apple-darwin,        name: numfranc-macos-x86_64 }
           - { os: windows-latest,   target: x86_64-pc-windows-msvc,     name: numfranc-windows-x86_64.exe }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - if: contains(matrix.target, 'musl')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - run: rustup target add ${{ matrix.target }}
       # Compilation reproductible (même version de Rust, chemins neutres) : voir scripts/build-reproductible.sh
       - shell: bash
@@ -55,17 +55,16 @@ jobs:
   # différents, et on exige exactement la même empreinte. Sinon, la version n'est pas publiée.
   reproductible:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       empreinte: ${{ steps.compare.outputs.empreinte }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: rustup target add x86_64-unknown-linux-musl
-      - run: ./scripts/build-reproductible.sh x86_64-unknown-linux-musl | tail -1 | cut -d' ' -f1 > /tmp/premier.txt
+      - run: rustup target add x86_64-unknown-linux-gnu
+      - run: ./scripts/build-reproductible.sh x86_64-unknown-linux-gnu | tail -1 | cut -d' ' -f1 > /tmp/premier.txt
       - run: |
           cp -r "$GITHUB_WORKSPACE" /tmp/autre-dossier && cd /tmp/autre-dossier && rm -rf target
-          ./scripts/build-reproductible.sh x86_64-unknown-linux-musl | tail -1 | cut -d' ' -f1 > /tmp/second.txt
+          ./scripts/build-reproductible.sh x86_64-unknown-linux-gnu | tail -1 | cut -d' ' -f1 > /tmp/second.txt
       - id: compare
         run: |
           echo "1re compilation : $(cat /tmp/premier.txt)"; echo "2e compilation  : $(cat /tmp/second.txt)"
