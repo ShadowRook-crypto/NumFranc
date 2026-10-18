@@ -1939,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "numfranc"
-version = "0.7.0"
+version = "1.0.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -1952,6 +1952,8 @@ dependencies = [
  "igd-next",
  "mainline",
  "num-bigint",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
  "qrcode",
  "rpassword",
  "sha3 0.12.0",

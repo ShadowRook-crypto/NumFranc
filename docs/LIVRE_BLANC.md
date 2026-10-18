@@ -2,7 +2,7 @@
 title: NumFranc (NFR)
 subtitle: Une monnaie numérique pair-à-pair conçue dès son origine pour résister aux ordinateurs quantiques
 kind: Livre blanc
-version: Version 0.7 — octobre 2026
+version: Version 1.0 — octobre 2026
 author: ShadowRook
 ---
 
@@ -14,7 +14,7 @@ Sa différence tient à un choix fait **dès le premier bloc** : toute la crypto
 
 La quantité totale est fixée à **69 100 000 NFR**, émis sur environ 98 ans au rythme d'un bloc toutes les **691 secondes**. Le minage utilise Argon2d, une fonction gourmande en mémoire qui laisse un ordinateur ordinaire compétitif. NumFranc ajoute enfin des fonctions pensées pour un usage quotidien : adresses lisibles avec somme de contrôle, messages joints aux paiements, paiements datés ou annulables, multi-signature, pseudos (« alice.nfr ») et portefeuille protégé par deux mots de passe et un code de secours en trois morceaux.
 
-Ce document décrit NumFranc tel qu'il est implémenté dans la version 0.7 du logiciel. Les fonctions seulement prévues sont présentées à part, dans la feuille de route.
+Ce document décrit NumFranc tel qu'il est implémenté dans la version 1.0 du logiciel. Les fonctions seulement prévues sont présentées à part, dans la feuille de route.
 
 ## 1. Pourquoi NumFranc
 
@@ -212,6 +212,8 @@ Tous les **691 blocs**, la cible est recalculée à partir du temps réellement 
 
 Le temps attendu correspond aux 690 intervalles de la fenêtre : 690 × 691 = 476 790 secondes. Le temps mesuré est borné entre le quart et le quadruple de cette valeur, pour qu'un seul ajustement ne puisse pas changer la difficulté de plus d'un facteur 4. Tout le calcul est fait en entiers de grande taille, sans arrondi flottant.
 
+Depuis la version 1.0, une règle reprise de Bitcoin (BIP94) interdit l'attaque dite du « time warp » : le premier bloc d'une fenêtre ne peut pas être daté plus de 2 heures avant le bloc précédent. Sans elle, un mineur majoritaire pourrait dater ce bloc dans le passé pour fausser la mesure et faire baisser la difficulté. Comme les autres règles ajoutées en 1.0, elle s'applique aux blocs dont le temps médian passé dépasse le 19 octobre 2026 : les blocs plus anciens restent valides.
+
 ### 5.4 Taille des blocs et débit
 
 Un bloc peut contenir jusqu'à **8 Mio**. Une transaction simple, avec une entrée et deux sorties, occupe environ 7,4 ko, à cause de la taille des clés et signatures ML-DSA. Un bloc peut donc contenir environ 1 100 transactions de ce type, soit un débit d'environ **1,6 transaction par seconde**. C'est inférieur à Bitcoin : c'est le prix de la sécurité post-quantique. L'amélioration du débit fait partie des pistes de recherche (section 12).
@@ -303,9 +305,10 @@ Un attaquant qui contrôle la majorité de la puissance de minage pourrait tente
 
 1. **Travail cumulé** : seule compte la chaîne qui a demandé le plus de calcul.
 2. **Limite de réorganisation** : un nœud refuse de remplacer plus de **10 blocs** de sa chaîne active (environ 1 h 55). Au-delà, l'historique est considéré comme définitif.
-3. **Points de contrôle** : les empreintes de blocs connus pourront être inscrites dans chaque nouvelle version du logiciel. Cette liste est vide dans la version 0.7.
+3. **Points de contrôle** : les empreintes de blocs connus pourront être inscrites dans chaque nouvelle version du logiciel. Cette liste est vide dans la version 1.0.
 4. **Maturité des récompenses** : 100 confirmations avant de pouvoir dépenser une récompense de minage.
-5. **Règles d'horodatage** : le temps médian passé et la limite de 2 heures empêchent de manipuler la difficulté en trichant sur les dates.
+5. **Règles d'horodatage** : le temps médian passé, la limite de 2 heures et la règle anti « time warp » (section 5.3) empêchent de manipuler la difficulté en trichant sur les dates.
+6. **Branches mortes refusées** : un bloc d'une branche qui part de plus de 10 blocs en arrière, et qui ne pourrait donc jamais être adoptée, n'est même pas enregistré.
 
 La limite de réorganisation a une contrepartie, qu'il faut connaître : si le réseau était coupé en deux pendant plus de 10 blocs, les deux moitiés ne se réconcilieraient pas automatiquement. Une intervention manuelle serait alors nécessaire. NumFranc considère ce risque comme préférable à celui d'une réécriture profonde de l'historique.
 
@@ -335,6 +338,15 @@ Au démarrage, un nœud attend 20 secondes de synchronisation avant de commencer
 ### 8.3 La file des transactions
 
 Les transactions valides mais pas encore incluses dans un bloc attendent dans une file de 64 Mio au plus. Un seul enregistrement de pseudo à la fois peut y viser un même nom : cela évite qu'un mineur produise un bloc contenant deux enregistrements contradictoires.
+
+### 8.4 Protections contre les abus
+
+Un réseau ouvert reçoit forcément des messages de pairs malveillants. Depuis la version 1.0, et à la suite d'un audit de sécurité, NumFranc reprend les protections de Bitcoin :
+
+- **Preuve avant confiance** : un nœud suspend son minage pour se synchroniser seulement si un pair lui a **livré** récemment un bloc valide. Une simple annonce de hauteur, invérifiable, ne suffit pas.
+- **Blocs envoyés un par un** : en réponse à une demande, les blocs sont lus et envoyés un à un, dans la limite de 500 blocs ou 32 Mio. Les demandes trop rapprochées sont ignorées et un pair trop insistant est déconnecté.
+- **Vérifications de la moins chère à la plus chère** : une transaction relayée ne doit pas dépasser 2 Mio ; on vérifie ensuite que les pièces dépensées existent, et seulement à la fin les signatures, hors des verrous. Une signature fausse vaut l'exclusion du pair pendant 24 heures.
+- **Annuaire des pairs à deux listes**, sur le modèle d'*addrman* de Bitcoin : les adresses déjà testées et les nouvelles. Les adresses sont rangées par quartier d'Internet (les deux premiers nombres de l'adresse IPv4) : au plus 8 nouvelles et 4 testées par quartier, au plus 64 apportées par un même pair, et un remplacement au hasard quand une liste est pleine. Les adresses privées (box, réseau local) venant d'Internet sont refusées : les ordinateurs de la maison se trouvent par la découverte locale. Un nœud ouvre au plus une connexion sortante par quartier et accepte au plus 4 connexions entrantes d'un même quartier. Un pair ne peut envoyer qu'une adresse toutes les 10 secondes, en plus de la réponse à notre propre demande.
 
 ## 9. Portefeuille
 
@@ -374,15 +386,15 @@ L'utilisateur peut fixer un seuil. Au-dessus, chaque paiement est envoyé comme 
 - **Empreinte visuelle** : chaque adresse est associée à 4 mots simples et une couleur, pour vérifier d'un coup d'œil qu'on paie la bonne personne.
 - **Message joint** : jusqu'à 140 octets de texte, publics et signés avec le paiement.
 - **Carnet d'adresses** et paiement vers un **pseudo**.
-- **Liens et QR codes de paiement** : `nfr:NFR1-…?amount=12.5&message=Merci`.
+- **Liens et QR codes de paiement** : `nfr:NFR1-…?amount=12.5&message=Merci`. Sur Windows et Linux, un clic sur le lien ouvre NumFranc avec le formulaire d'envoi déjà rempli ; rien n'est payé sans vérification et sans le code de dépense.
 - **Preuve de réserve** (`NFRPROOF1-…`) : prouver qu'on détient au moins un montant, en ne révélant que les adresses nécessaires et en incluant un mot choisi par le vérificateur, pour empêcher la réutilisation d'une ancienne preuve.
 - **Propositions multi-signature** (`NFRMS1-…`) : une transaction à faire circuler entre les membres d'un groupe jusqu'à atteindre le seuil.
 
 ## 10. Application et distribution
 
-NumFranc est **un seul programme**. Un double-clic ouvre une fenêtre qui crée ou ouvre le portefeuille, puis lance le nœud et le minage. La fenêtre propose les onglets Accueil, Recevoir, Envoyer, Historique, Carnet, Explorateur, Réseau, Sécurité et Réglages. L'interface existe en **français et en anglais**, en thème clair ou sombre. Une commande ajoute NumFranc au menu des applications, sans rien installer en dehors du dossier personnel.
+NumFranc est **un seul programme**. Un double-clic ouvre une fenêtre qui crée ou ouvre le portefeuille, puis lance le nœud et le minage. La fenêtre montre l'essentiel : Accueil, Envoyer, Recevoir, Historique, Carnet et Réglages, plus Sécurité et Explications dans un menu « Plus ». Le **mode expert** (dans les Réglages) ajoute Explorateur, Émission, Avancé et Réseau. L'interface existe en **français et en anglais**, en thème clair ou sombre. Une commande ajoute NumFranc au menu des applications, sans rien installer en dehors du dossier personnel.
 
-Le logiciel est écrit en **Rust**, un langage qui empêche par construction des familles entières d'erreurs mémoire. Il est publié sous **licence MIT** sur GitHub. À chaque version, un service d'intégration continue exécute la suite de tests, puis compile le programme pour cinq plateformes : Linux x86-64, Linux ARM64, macOS Apple Silicon, macOS Intel et Windows x86-64. Il produit aussi l'archive `NumFranc.zip` et le fichier d'empreintes `SHA3SUMS.txt`.
+Le logiciel est écrit en **Rust**, un langage qui empêche par construction des familles entières d'erreurs mémoire. Il est publié sous **licence MIT** sur GitHub. À chaque version, un service d'intégration continue exécute la suite de tests, puis compile le programme pour cinq plateformes : Linux x86-64, Linux ARM64, macOS Apple Silicon, macOS Intel et Windows x86-64. Il produit aussi l'archive `NumFranc.zip` et le fichier d'empreintes `SHA3SUMS.txt`. La compilation est **reproductible** : la version de Rust, les dépendances et les chemins sont fixés, si bien que deux compilations du même code donnent exactement le même programme. Le service le vérifie en compilant deux fois la version Linux ; chacun peut refaire l'essai avec `scripts/build-reproductible.sh`.
 
 ## 11. Signature des versions
 
@@ -402,6 +414,8 @@ La vérification se fait avec l'outil fourni :
 
 Si la signature est fausse, l'outil affiche « signature FAUSSE : ne pas utiliser ce fichier ». Ce livre blanc lui-même est inclus dans les fichiers signés.
 
+Le bouton **« Vérifier les mises à jour »** (Réglages) fait la même vérification automatiquement : il télécharge `SHA3SUMS.txt` et sa signature, contrôle la signature avec la clé publique inscrite dans le programme, et ne propose la nouvelle version que si elle est valide. Le numéro de version est lu dans la première ligne du fichier d'empreintes, elle aussi couverte par la signature.
+
 ### 11.3 Protection de la clé de signature
 
 La clé secrète a été créée sur un ordinateur déconnecté du réseau. Elle n'existe plus en entier nulle part : elle a été découpée par partage de Shamir (deux morceaux sur trois suffisent), chaque morceau a été chiffré, puis rangé hors ligne dans un lieu distinct. Elle n'est reconstituée que le temps de signer une version, hors ligne.
@@ -414,11 +428,11 @@ Si la clé de signature était un jour compromise, une nouvelle paire serait cr�
 
 Les éléments suivants **ne sont pas encore implémentés**. Ils sont listés sans date, par ordre approximatif de priorité :
 
-- **Audit de sécurité indépendant** du code de consensus et du portefeuille.
+- **Audit de sécurité par des experts humains** du code de consensus et du portefeuille. Un premier audit, réalisé par une intelligence artificielle indépendante, a conduit aux protections de la section 8.4.
 - **Nœuds d'amorçage publics** : des nœuds toujours allumés pour faciliter la première connexion. La découverte actuelle (DHT, réseau local, UPnP) fonctionne sans eux.
 - **Ordinateur de signature dédié**, jamais connecté, pour les versions.
 - **Interface RPC locale** (`127.0.0.1:6911`), accessible uniquement depuis l'ordinateur lui-même, pour de futures passerelles d'échange. L'adresse est réservée dans le code mais le service n'existe pas encore.
-- **Mode simplifié** de l'interface, pour les débutants.
+- **Synchronisation par en-têtes** (comme Bitcoin) : télécharger d'abord les en-têtes, légers, avant les blocs.
 - **Points de contrôle** ajoutés à chaque nouvelle version.
 - **Débit** : étude de techniques pour réduire la place des signatures post-quantiques dans les blocs.
 

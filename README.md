@@ -2,12 +2,12 @@
 
 # NumFranc (NFR)
 
-*English: NumFranc is a learning-project cryptocurrency written in Rust, with post-quantum ML-DSA-87 signatures, memory-hard Argon2d proof of work, a fixed 69.1 M cap and a single program (node + miner + wallet + GUI). It is **unaudited** and has **no real value**: do not use it with real money. Built by a student with the help of Claude (Anthropic). Licence: MIT.*
+*English: NumFranc is a cryptocurrency written in Rust, with post-quantum ML-DSA-87 signatures, memory-hard Argon2d proof of work, a fixed 69.1 M cap and a single program (node + miner + wallet + GUI). Built with the help of Claude (Anthropic). Software provided **without warranty** (MIT licence).*
 
 Cryptomonnaie à preuve de travail, avec signatures **post-quantiques ML-DSA-87** dès le premier bloc.
 Écrite en Rust, un seul programme : nœud réseau + minage + portefeuille.
 
-> Projet d'apprentissage **non audité**. Ne pas utiliser pour de l'argent réel.
+> Logiciel fourni **sans garantie** (licence MIT).
 
 ## Paramètres
 | Paramètre | Valeur |
@@ -67,13 +67,15 @@ Limite connue : si le réseau est coupé en deux pendant plus de 10 blocs, les d
 **Contre la falsification du logiciel**
 - Code public et vérifiable.
 - Chaque version publiée est accompagnée d'empreintes **SHA3-512** (`SHA3SUMS.txt`, vérifiables avec `python3 sha3sum.py --check SHA3SUMS.txt`), la même famille de hachage que le reste de NumFranc. Chaque version est aussi **signée** (`SHA3SUMS.txt.sig`, SLH-DSA-SHAKE-128s, norme FIPS 205) : la signature prouve que le manifeste vient de l'auteur, pas d'un tiers. Les transactions, elles, restent en ML-DSA-87.
+- **Compilation reproductible** : `./scripts/build-reproductible.sh CIBLE` (ex. `x86_64-unknown-linux-musl`) doit redonner exactement le même programme que celui publié (vérifié pour Linux x86-64) ; comparez l'empreinte affichée avec la ligne correspondante de `SHA3SUMS.txt`. La CI le vérifie à chaque version en compilant deux fois.
+- **Mises à jour** : le bouton « Vérifier les mises à jour » (Réglages) ne propose une nouvelle version que si sa signature est valide.
 
 **Fonctions de la v0.6**
 - **Pseudos** `nom.nfr` inscrits dans la chaîne (3 à 32 caractères, frais uniques selon la longueur), transférables.
 - **Paiements annulables** : sorties « retenues » que l'expéditeur (ou un gardien) peut reprendre avant une date de déblocage ; réglage par seuil et délai dans le portefeuille.
 - **Multi-signature M sur N** (jusqu'à 15 membres), avec signatures ML-DSA et propositions à signer à tour de rôle.
 - **Gel du portefeuille** : la graine est effacée de l'ordinateur ; dégel avec mot de passe d'ouverture, nouveau code de dépense et 2 morceaux de secours.
-- Demande de paiement (lien `nfr:` et QR code), preuve de réserve, tableau de bord de l'émission, mode explication pas à pas, démarrage automatique, verrou d'instance unique.
+- Demande de paiement (lien `nfr:` cliquable sur Windows et Linux, et QR code), preuve de réserve, tableau de bord de l'émission, mode explication pas à pas, démarrage automatique, verrou d'instance unique.
 - Protocole 4 : **nouvelle chaîne**, incompatible avec les versions précédentes. Une ancienne `blocks.dat` est mise de côté automatiquement.
 
 **Interface (v0.5)**
@@ -138,4 +140,4 @@ et Windows, puis publie `NumFranc.zip`.
 La clé publique (`MACLE.pub`) est committée dans `packaging/cle-publique.txt`. La clé secrète n'est jamais dans le dépôt.
 
 ## Licence et origine
-Code publié sous licence MIT (voir `LICENSE`). Projet d'apprentissage créé par un collégien, avec l'aide de l'IA Claude (Anthropic) pour la conception et l'écriture du code. Aucune garantie.
+Code publié sous licence MIT (voir `LICENSE`). Créé par ShadowRook, avec l'aide de l'IA Claude (Anthropic) pour la conception et l'écriture du code. Aucune garantie.

@@ -5,11 +5,22 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Droits minimaux par défaut (lecture seule) ; seul le job « package » peut publier.
+# Les actions sont épinglées par leur empreinte (SHA) : une étiquette comme « v4 » peut être
+# déplacée par quelqu'un d'autre, une empreinte non.
+permissions:
+  contents: read
+
+# bash avec « -eo pipefail » : une erreur au milieu d'une suite de commandes arrête tout.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: cargo test --release
 
   build:
@@ -24,31 +35,60 @@ jobs:
           - { os: windows-latest,   target: x86_64-pc-windows-msvc,     name: numfranc-windows-x86_64.exe }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - if: contains(matrix.target, 'musl')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - run: rustup target add ${{ matrix.target }}
-      - run: cargo build --release --target ${{ matrix.target }}
+      # Compilation reproductible (même version de Rust, chemins neutres) : voir scripts/build-reproductible.sh
+      - shell: bash
+        run: ./scripts/build-reproductible.sh ${{ matrix.target }}
       - shell: bash
         run: |
           mkdir -p dist-bin
           src=target/${{ matrix.target }}/release/numfranc
           [ -f "$src.exe" ] && src="$src.exe"
           cp "$src" "dist-bin/${{ matrix.name }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: "${{ matrix.name }}", path: dist-bin/ }
 
+  # Preuve de reproductibilité : on compile deux fois le programme Linux, dans deux dossiers
+  # différents, et on exige exactement la même empreinte. Sinon, la version n'est pas publiée.
+  reproductible:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      empreinte: ${{ steps.compare.outputs.empreinte }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: ./scripts/build-reproductible.sh x86_64-unknown-linux-musl | tail -1 | cut -d' ' -f1 > /tmp/premier.txt
+      - run: |
+          cp -r "$GITHUB_WORKSPACE" /tmp/autre-dossier && cd /tmp/autre-dossier && rm -rf target
+          ./scripts/build-reproductible.sh x86_64-unknown-linux-musl | tail -1 | cut -d' ' -f1 > /tmp/second.txt
+      - id: compare
+        run: |
+          echo "1re compilation : $(cat /tmp/premier.txt)"; echo "2e compilation  : $(cat /tmp/second.txt)"
+          cmp /tmp/premier.txt /tmp/second.txt
+          echo "Reproductible : les deux empreintes sont identiques."
+          echo "empreinte=$(cat /tmp/premier.txt)" >> "$GITHUB_OUTPUT"
+
   package:
-    needs: build
+    needs: [build, reproductible]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { path: dist-bin, merge-multiple: true }
+      # Le programme Linux publié doit être exactement celui des deux compilations de contrôle.
+      - run: |
+          publie="$(python3 -c "import hashlib,sys; print(hashlib.sha3_512(open(sys.argv[1],'rb').read()).hexdigest())" dist-bin/numfranc-linux-x86_64)"
+          echo "publié    : $publie"; echo "contrôle  : ${{ needs.reproductible.outputs.empreinte }}"
+          test "$publie" = "${{ needs.reproductible.outputs.empreinte }}"
       - run: chmod +x dist-bin/* && ./scripts/make-dist.sh dist && cd dist && zip -r NumFranc.zip NumFranc
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: NumFranc, path: dist/NumFranc.zip }
       - if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with: { files: "dist/NumFranc.zip\ndist/NumFranc/SHA3SUMS.txt" }

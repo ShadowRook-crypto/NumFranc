@@ -35,6 +35,8 @@ mod plus;
 pub fn run(opts: Options) -> Result<(), String> {
     let settings = Settings::load(&opts.data_dir);
     crate::i18n::set_english(settings.english);
+    #[cfg(target_os = "macos")]
+    crate::mac_liens::installer(opts.data_dir.clone());
     let icon = egui::IconData { rgba: crate::install::ICON_RGBA_64.to_vec(), width: 64, height: 64 };
     let native = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -295,6 +297,9 @@ struct App {
     explorer_go: String,
     schedule_night: Option<bool>,
     plus: plus::PlusState,
+    /// Vérification des mises à jour en cours (réponse attendue du fil de travail) et dernier résultat.
+    maj_attente: Option<std::sync::mpsc::Receiver<Result<crate::maj::Resultat, String>>>,
+    maj: Option<Result<crate::maj::Resultat, String>>,
 }
 
 impl App {
@@ -350,6 +355,8 @@ impl App {
             explorer_go: String::new(),
             schedule_night: None,
             plus: Default::default(),
+            maj_attente: None,
+            maj: None,
             opts,
         }
     }
@@ -528,11 +535,28 @@ impl App {
     }
 }
 
+impl App {
+    /// Un lien de paiement nfr:… a été cliqué : il remplit le formulaire « Envoyer » (rien n'est envoyé
+    /// sans vérification et sans le code de dépense) et la fenêtre passe au premier plan.
+    fn take_payment_link(&mut self, ctx: &egui::Context) {
+        let Some(link) = crate::install::take_link(&self.opts.data_dir) else { return };
+        self.send.to = link;
+        self.send.amount.clear();
+        self.send.memo.clear();
+        self.send.code.clear();
+        self.tab = Tab::Envoyer;
+        self.toasts.push((Instant::now(), t("Lien de paiement reçu : vérifie avant d'envoyer.", "Payment link received: check before sending.").to_string()));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll_job();
         let ctx = ui.ctx().clone();
         if self.node.is_some() && self.shares_to_show.is_none() {
+            self.take_payment_link(&ctx);
             self.refresh();
             self.main_screen(ui, &ctx);
             ctx.request_repaint_after(Duration::from_secs(1));
@@ -665,8 +689,10 @@ impl App {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(24.0);
+                    let (r, _) = ui.allocate_exact_size(Vec2::splat(96.0), egui::Sense::hover());
+                    draw_logo(ui.painter(), r);
                     ui.label(RichText::new("NumFranc").size(40.0).strong().color(p.accent));
-                    ui.label(RichText::new(t("Monnaie post-quantique — projet d'apprentissage non audité", "Post-quantum currency — unaudited learning project")).color(p.grey));
+                    ui.label(RichText::new(t("Monnaie numérique post-quantique", "Post-quantum digital currency")).color(p.grey));
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.add_space(ui.available_width() / 2.0 - 70.0);
@@ -950,25 +976,52 @@ impl App {
                 draw_logo(ui.painter(), r);
                 ui.label(RichText::new("NumFranc").size(21.0).strong().color(p.accent));
                 ui.add_space(8.0);
-                for (tab, fr, en) in [
+                // Onglets de tous les jours, puis ceux du mode expert.
+                let essentiels = [
                     (Tab::Accueil, "Accueil", "Home"),
-                    (Tab::Recevoir, "Recevoir", "Receive"),
                     (Tab::Envoyer, "Envoyer", "Send"),
+                    (Tab::Recevoir, "Recevoir", "Receive"),
                     (Tab::Historique, "Historique", "History"),
                     (Tab::Carnet, "Carnet", "Contacts"),
+                ];
+                let plus = [(Tab::Securite, "Sécurité", "Security"), (Tab::Explications, "Explications", "Explain")];
+                let experts = [
                     (Tab::Explorateur, "Explorateur", "Explorer"),
                     (Tab::Emission, "Émission", "Issuance"),
-                    (Tab::Explications, "Explications", "Explain"),
                     (Tab::Avance, "Avancé", "Advanced"),
                     (Tab::Reseau, "Réseau", "Network"),
-                    (Tab::Securite, "Sécurité", "Security"),
-                    (Tab::Reglages, "Réglages", "Settings"),
-                ] {
+                ];
+                let mut choisi = None;
+                for (tab, fr, en) in essentiels {
                     if ui.selectable_label(self.tab == tab, t(fr, en)).clicked() {
-                        self.tab = tab;
-                        self.error = None;
-                        self.info = None;
+                        choisi = Some(tab);
                     }
+                }
+                if self.settings.expert {
+                    for (tab, fr, en) in plus.into_iter().chain(experts) {
+                        if ui.selectable_label(self.tab == tab, t(fr, en)).clicked() {
+                            choisi = Some(tab);
+                        }
+                    }
+                } else {
+                    let dans_plus = plus.iter().any(|(tab, _, _)| *tab == self.tab);
+                    let titre = RichText::new(t("Plus…", "More…"));
+                    ui.menu_button(if dans_plus { titre.strong().color(p.accent) } else { titre }, |ui| {
+                        for (tab, fr, en) in plus {
+                            if ui.selectable_label(self.tab == tab, t(fr, en)).clicked() {
+                                choisi = Some(tab);
+                                ui.close();
+                            }
+                        }
+                    });
+                }
+                if ui.selectable_label(self.tab == Tab::Reglages, t("Réglages", "Settings")).clicked() {
+                    choisi = Some(Tab::Reglages);
+                }
+                if let Some(tab) = choisi {
+                    self.tab = tab;
+                    self.error = None;
+                    self.info = None;
                 }
             });
             ui.add_space(4.0);
@@ -1606,7 +1659,7 @@ impl App {
                     });
                 }
                 if !tx.memo.is_empty() {
-                    ui.label(tf!("Message : « {} »", "Message: “{}”", String::from_utf8_lossy(&tx.memo)));
+                    ui.label(tf!("Message : « {} »", "Message: “{}”", tx.memo_text()));
                 }
                 ui.add_space(4.0);
             }
@@ -1759,6 +1812,63 @@ impl App {
                 changed |= ui.add(egui::Slider::new(&mut self.settings.cores_night, 0..=cores).text(t("cœurs la nuit (0 = arrêt)", "cores at night (0 = off)"))).changed();
                 changed |= ui.add(egui::Slider::new(&mut self.settings.cores_day, 0..=cores).text(t("cœurs le jour (0 = arrêt)", "cores during the day (0 = off)"))).changed();
             });
+        });
+        card(ui, &p, |ui| {
+            ui.label(RichText::new(t("Mises à jour", "Updates")).strong());
+            ui.label(tf!(
+                "Version installée : {}. La vérification télécharge la liste signée de la dernière version et contrôle sa signature avant de te la proposer.",
+                "Installed version: {}. The check downloads the signed list of the latest version and verifies its signature before offering it.",
+                env!("CARGO_PKG_VERSION")
+            ));
+            if let Some(rx) = &self.maj_attente {
+                if let Ok(r) = rx.try_recv() {
+                    self.maj = Some(r);
+                    self.maj_attente = None;
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(t("Vérification…", "Checking…"));
+                    });
+                    ctx.request_repaint_after(Duration::from_millis(200));
+                }
+            }
+            if self.maj_attente.is_none() && ui.button(t("Vérifier les mises à jour", "Check for updates")).clicked() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let dossier = self.opts.data_dir.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(crate::maj::verifier(&dossier));
+                });
+                self.maj_attente = Some(rx);
+                self.maj = None;
+            }
+            match &self.maj {
+                Some(Ok(crate::maj::Resultat::Nouvelle(v))) => {
+                    ui.colored_label(p.green, tf!("Version {v} disponible — signature de l'auteur vérifiée ✔", "Version {v} available — author's signature verified ✔"));
+                    if ui.button(t("Ouvrir la page de téléchargement", "Open the download page")).clicked() {
+                        crate::maj::ouvrir_page();
+                    }
+                }
+                Some(Ok(crate::maj::Resultat::AJour(_))) => {
+                    ui.colored_label(p.green, t("NumFranc est à jour.", "NumFranc is up to date."));
+                }
+                Some(Err(e)) => {
+                    ui.colored_label(p.red, e.as_str());
+                }
+                None => {}
+            }
+        });
+        card(ui, &p, |ui| {
+            ui.label(RichText::new(t("Mode expert", "Expert mode")).strong());
+            ui.label(t(
+                "Désactivé, NumFranc ne montre que l'essentiel. Activé, tous les onglets apparaissent : Explorateur, Émission, Avancé et Réseau.",
+                "When off, NumFranc only shows the essentials. When on, every tab appears: Explorer, Issuance, Advanced and Network.",
+            ));
+            if ui.checkbox(&mut self.settings.expert, t("Activer le mode expert", "Turn on expert mode")).changed() {
+                changed = true;
+                if !self.settings.expert && matches!(self.tab, Tab::Explorateur | Tab::Emission | Tab::Avance | Tab::Reseau) {
+                    self.tab = Tab::Accueil;
+                }
+            }
         });
         card(ui, &p, |ui| {
             ui.label(RichText::new(t("Raccourci", "Shortcut")).strong());

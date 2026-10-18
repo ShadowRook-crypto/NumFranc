@@ -328,6 +328,12 @@ impl Transaction {
         self.serialize().len()
     }
 
+    /// Message joint, prêt à afficher : les caractères de contrôle (codes d'échappement du terminal)
+    /// et les caractères qui inversent le sens du texte sont retirés.
+    pub fn memo_text(&self) -> String {
+        clean_text(&String::from_utf8_lossy(&self.memo))
+    }
+
     /// Identifiant : double SHA3-512 de la transaction complète.
     pub fn txid(&self) -> Hash {
         hash512(&self.serialize())
@@ -786,5 +792,23 @@ mod tests {
         let mut bad = b.clone();
         bad[4 + 4 + 1 + 64 + 4] = 7; // type d'entrée inconnu
         assert!(Transaction::from_bytes(&bad).is_err());
+    }
+}
+
+/// Retire d'un texte venu du réseau ce qui pourrait tromper l'affichage : caractères de contrôle
+/// (dont les séquences ANSI du terminal) et caractères de direction du texte (U+202A…U+202E, U+2066…U+2069…).
+pub fn clean_text(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_control() && !matches!(*c, '\u{200E}' | '\u{200F}' | '\u{061C}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests_texte {
+    #[test]
+    fn message_joint_nettoye() {
+        assert_eq!(super::clean_text("Merci\u{1b}[2J\u{1b}[31m !"), "Merci[2J[31m !");
+        assert_eq!(super::clean_text("abc\u{202E}fdp.exe"), "abcfdp.exe");
+        assert_eq!(super::clean_text("Café 🍰"), "Café 🍰");
     }
 }

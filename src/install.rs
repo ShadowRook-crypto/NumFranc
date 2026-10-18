@@ -49,12 +49,52 @@ fn launcher_dir(exe: &Path) -> PathBuf {
         .unwrap_or_else(|| exe.parent().unwrap_or(Path::new(".")).to_path_buf())
 }
 
+// ---------- Protection des chemins écrits dans les fichiers de lancement ----------
+// Un chemin (dossier personnel, dossier de données) est écrit dans des scripts et des fichiers
+// de configuration. Il ne doit jamais pouvoir y ajouter une commande ou une option.
+
+/// Refuse les chemins contenant des caractères de contrôle (retour à la ligne, etc.).
+fn check_path(s: &str) -> Result<(), String> {
+    if s.chars().any(char::is_control) {
+        return Err("chemin contenant des caractères invisibles : déplace NumFranc dans un dossier au nom simple".into());
+    }
+    Ok(())
+}
+
+/// Linux : les fichiers .desktop ont leurs propres règles d'échappement ; on refuse simplement
+/// les caractères qui y ont un sens spécial.
+fn check_desktop_path(s: &str) -> Result<(), String> {
+    check_path(s)?;
+    if s.chars().any(|c| matches!(c, '"' | '`' | '$' | '\\' | '%')) {
+        return Err("chemin contenant \" ` $ \\ ou % : déplace NumFranc dans un dossier au nom simple".into());
+    }
+    Ok(())
+}
+
+/// Bash : entre apostrophes, rien n'est interprété ; une apostrophe s'écrit '\''.
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// PowerShell : entre apostrophes, une apostrophe s'écrit ''.
+fn ps_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// XML (fichiers .plist de macOS).
+fn xml(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 /// Ajoute NumFranc au menu des applications. Renvoie une phrase décrivant ce qui a été fait.
 pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.canonicalize().unwrap_or(exe);
     let workdir = launcher_dir(&exe);
     let data = data_dir.display().to_string();
+    for p in [exe.display().to_string(), workdir.display().to_string(), data.clone()] {
+        if cfg!(target_os = "linux") { check_desktop_path(&p) } else { check_path(&p) }?;
+    }
     let _ = std::fs::create_dir_all(data_dir);
     if cfg!(target_os = "linux") {
         let h = home()?;
@@ -65,7 +105,7 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
         let icon = icon_dir.join("numfranc.png");
         std::fs::write(&icon, LOGO_PNG_256).map_err(|e| e.to_string())?;
         let desktop = format!(
-            "[Desktop Entry]\nType=Application\nName=NumFranc\nComment=Monnaie post-quantique NumFranc (NFR)\nExec=\"{}\" --dossier \"{}\"\nPath={}\nIcon={}\nTerminal=false\nCategories=Finance;Network;\n",
+            "[Desktop Entry]\nType=Application\nName=NumFranc\nComment=Monnaie post-quantique NumFranc (NFR)\nExec=\"{}\" --dossier \"{}\" %u\nPath={}\nIcon={}\nTerminal=false\nCategories=Finance;Network;\nMimeType=x-scheme-handler/nfr;\n",
             exe.display(),
             data,
             workdir.display(),
@@ -74,6 +114,8 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
         let file = apps.join("numfranc.desktop");
         std::fs::write(&file, desktop).map_err(|e| e.to_string())?;
         set_executable(&file);
+        // Les liens nfr:… s'ouvrent avec NumFranc (sans effet si xdg-mime est absent).
+        let _ = std::process::Command::new("xdg-mime").args(["default", "numfranc.desktop", "x-scheme-handler/nfr"]).status();
         Ok(crate::tf!("NumFranc est dans le menu des applications ({}).", "NumFranc is in the applications menu ({}).", file.display()))
     } else if cfg!(target_os = "macos") {
         let h = home()?;
@@ -82,16 +124,24 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
         std::fs::create_dir_all(app.join("Resources")).map_err(|e| e.to_string())?;
         std::fs::write(app.join("Resources/NumFranc.icns"), icns(LOGO_PNG_256, LOGO_PNG_512)).map_err(|e| e.to_string())?;
         let script = format!(
-            "#!/bin/bash\ncd \"{}\"\nexec \"{}\" --dossier \"{}\"\n",
-            workdir.display(),
-            exe.display(),
-            data
+            "#!/bin/bash\ncd {}\nexec {} --dossier {}\n",
+            sh_quote(&workdir.display().to_string()),
+            sh_quote(&exe.display().to_string()),
+            sh_quote(&data)
         );
         let launcher = app.join("MacOS/NumFranc");
         std::fs::write(&launcher, script).map_err(|e| e.to_string())?;
         set_executable(&launcher);
-        let plist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>CFBundleName</key><string>NumFranc</string>\n<key>CFBundleDisplayName</key><string>NumFranc</string>\n<key>CFBundleIdentifier</key><string>org.numfranc.app</string>\n<key>CFBundleExecutable</key><string>NumFranc</string>\n<key>CFBundleIconFile</key><string>NumFranc</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleVersion</key><string>1</string>\n<key>NSHighResolutionCapable</key><true/>\n</dict></plist>\n";
+        let plist = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>CFBundleName</key><string>NumFranc</string>\n<key>CFBundleDisplayName</key><string>NumFranc</string>\n<key>CFBundleIdentifier</key><string>org.numfranc.app</string>\n<key>CFBundleExecutable</key><string>NumFranc</string>\n<key>CFBundleIconFile</key><string>NumFranc</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleShortVersionString</key><string>{v}</string>\n<key>CFBundleVersion</key><string>{v}</string>\n<key>LSMinimumSystemVersion</key><string>11.0</string>\n<key>LSApplicationCategoryType</key><string>public.app-category.finance</string>\n<key>NSHumanReadableCopyright</key><string>ShadowRook — licence MIT</string>\n<key>NSHighResolutionCapable</key><true/>\n<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>org.numfranc.paiement</string><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLSchemes</key><array><string>nfr</string></array></dict></array>\n</dict></plist>\n",
+            v = env!("CARGO_PKG_VERSION")
+        );
         std::fs::write(app.join("Info.plist"), plist).map_err(|e| e.to_string())?;
+        // Signale l'app (et ses liens nfr:) au Finder tout de suite ; sinon macOS la découvre tout seul plus tard.
+        let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+        if let Some(bundle) = app.parent() {
+            let _ = std::process::Command::new(lsregister).arg("-f").arg(bundle).status();
+        }
         Ok(crate::i18n::t(
             "NumFranc est dans le dossier Applications de ton compte (~/Applications) : ouvre-le depuis le Launchpad ou Spotlight.",
             "NumFranc is in your account's Applications folder (~/Applications): open it from Launchpad or Spotlight.",
@@ -104,11 +154,11 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
         let lnk = PathBuf::from(appdata).join("Microsoft\\Windows\\Start Menu\\Programs\\NumFranc.lnk");
         let ps = format!(
             "$s=(New-Object -COM WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='--dossier \"{}\"';$s.WorkingDirectory='{}';$s.IconLocation='{}';$s.Save()",
-            lnk.display(),
-            exe.display(),
-            data,
-            workdir.display(),
-            ico_path.display()
+            ps_quote(&lnk.display().to_string()),
+            ps_quote(&exe.display().to_string()),
+            ps_quote(&data),
+            ps_quote(&workdir.display().to_string()),
+            ps_quote(&ico_path.display().to_string())
         );
         let ok = std::process::Command::new("powershell")
             .args(["-NoProfile", "-Command", &ps])
@@ -116,6 +166,14 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
             .map(|s| s.success())
             .unwrap_or(false);
         if ok {
+            // Les liens nfr:… s'ouvrent avec NumFranc (registre de l'utilisateur, sans droits administrateur).
+            // reg.exe est appelé directement, sans passer par un interpréteur de commandes.
+            let cmd = format!("\"{}\" --dossier \"{}\" \"%1\"", exe.display(), data);
+            let key = r"HKCU\Software\Classes\nfr";
+            let reg = |args: &[&str]| std::process::Command::new("reg").args(args).status().map(|s| s.success()).unwrap_or(false);
+            let _ = reg(&["add", key, "/ve", "/d", "URL:NumFranc", "/f"])
+                && reg(&["add", key, "/v", "URL Protocol", "/d", "", "/f"])
+                && reg(&["add", &format!(r"{key}\shell\open\command"), "/ve", "/d", &cmd, "/f"]);
             Ok(crate::i18n::t("NumFranc est dans le menu Démarrer.", "NumFranc is in the Start menu.").into())
         } else {
             Err("création du raccourci impossible".into())
@@ -146,6 +204,38 @@ pub fn single_instance(data_dir: &Path) -> Result<(), String> {
         )
         .into()),
     }
+}
+
+/// Fichier où un lien de paiement cliqué (nfr:…) attend que la fenêtre le prenne.
+const LINK_FILE: &str = "lien-paiement.txt";
+
+/// Dépose un lien de paiement nfr:… pour la fenêtre NumFranc.
+/// Renvoie Ok(true) si un autre NumFranc est déjà ouvert sur ce dossier (c'est lui qui prendra le lien).
+/// Le lien ne fait que remplir le formulaire « Envoyer » : rien n'est payé sans le code de dépense.
+pub fn hand_over_link(data_dir: &Path, link: &str) -> Result<bool, String> {
+    let link = link.trim();
+    if link.len() > 2048 {
+        return Err("lien trop long".into());
+    }
+    crate::wallet_plus::parse_payment_uri(link)?;
+    std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
+    let tmp = data_dir.join(format!("{LINK_FILE}.tmp"));
+    std::fs::write(&tmp, link).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, data_dir.join(LINK_FILE)).map_err(|e| e.to_string())?;
+    // Un autre NumFranc tient-il déjà le verrou du dossier ? (on teste sans le garder)
+    let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(data_dir.join("numfranc.lock")).map_err(|e| e.to_string())?;
+    Ok(f.try_lock().is_err())
+}
+
+/// Reprend le lien de paiement déposé par hand_over_link, s'il y en a un (et l'efface).
+pub fn take_link(data_dir: &Path) -> Option<String> {
+    let path = data_dir.join(LINK_FILE);
+    let len = std::fs::metadata(&path).ok()?.len();
+    let text = if len <= 4096 { std::fs::read_to_string(&path).ok() } else { None };
+    let _ = std::fs::remove_file(&path);
+    let link = text?.trim().to_string();
+    crate::wallet_plus::parse_payment_uri(&link).ok()?;
+    Some(link)
 }
 
 const AUTOSTART_NAME: &str = "numfranc";
@@ -181,6 +271,9 @@ pub fn set_autostart(enable: bool, data_dir: &Path) -> Result<String, String> {
     let exe = exe.canonicalize().unwrap_or(exe);
     let workdir = launcher_dir(&exe);
     let data = data_dir.display().to_string();
+    for p in [exe.display().to_string(), workdir.display().to_string(), data.clone()] {
+        if cfg!(target_os = "linux") { check_desktop_path(&p) } else { check_path(&p) }?;
+    }
     let on = crate::i18n::t("NumFranc démarrera tout seul à l'ouverture de ta session (fenêtre réduite).", "NumFranc will start by itself when you log in (window minimized).");
     let off = crate::i18n::t("Démarrage automatique désactivé.", "Automatic start disabled.");
     if cfg!(target_os = "windows") {
@@ -210,9 +303,9 @@ pub fn set_autostart(enable: bool, data_dir: &Path) -> Result<String, String> {
     } else {
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>org.numfranc.app</string>\n<key>ProgramArguments</key><array><string>{}</string><string>--reduit</string><string>--dossier</string><string>{}</string></array>\n<key>WorkingDirectory</key><string>{}</string>\n<key>RunAtLoad</key><true/>\n</dict></plist>\n",
-            exe.display(),
-            data,
-            workdir.display()
+            xml(&exe.display().to_string()),
+            xml(&data),
+            xml(&workdir.display().to_string())
         )
     };
     std::fs::write(&p, text).map_err(|e| e.to_string())?;
@@ -241,5 +334,52 @@ mod tests {
         assert_eq!(&w[..6], &[0, 0, 1, 0, 1, 0]);
         assert_eq!(&w[22..30], &LOGO_PNG_256[..8]);
         assert_eq!(ICON_RGBA_64.len(), 64 * 64 * 4);
+    }
+}
+
+#[cfg(test)]
+mod tests_lien {
+    use super::*;
+
+    #[test]
+    fn chemins_pieges_neutralises() {
+        // Bash : $(…), `…` et " restent du texte entre apostrophes.
+        assert_eq!(sh_quote("/home/a b"), "'/home/a b'");
+        assert_eq!(sh_quote("/x/$(calc)/`id`/\"q\""), "'/x/$(calc)/`id`/\"q\"'");
+        assert_eq!(sh_quote("/x/l'appli"), "'/x/l'\\''appli'");
+        // PowerShell : l'apostrophe est doublée, la chaîne ne peut plus être refermée.
+        assert_eq!(ps_quote(r"C:\Users\Public\a';Start-Process calc;'"), r"C:\Users\Public\a'';Start-Process calc;''");
+        // XML.
+        assert_eq!(xml("/a<b>&c"), "/a&lt;b&gt;&amp;c");
+        // Retours à la ligne et caractères spéciaux des fichiers .desktop refusés.
+        assert!(check_path("/home/a\nExec=calc").is_err());
+        assert!(check_desktop_path("/home/a\"b").is_err());
+        assert!(check_desktop_path("/home/$HOME").is_err());
+        assert!(check_desktop_path("/home/éloïse/NumFranc").is_ok());
+    }
+
+    #[test]
+    fn lien_depose_puis_repris_une_seule_fois() {
+        let dir = std::env::temp_dir().join(format!("nfr-lien-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let lien = "nfr:alice.nfr?amount=1.5&message=merci";
+        // Personne ne tient le verrou : ce lancement ouvrira lui-même la fenêtre.
+        assert_eq!(hand_over_link(&dir, lien), Ok(false));
+        assert_eq!(take_link(&dir).as_deref(), Some(lien));
+        assert_eq!(take_link(&dir), None);
+        // Un lien mal formé est refusé et rien n'est déposé.
+        assert!(hand_over_link(&dir, "nfr:").is_err());
+        assert!(hand_over_link(&dir, "http://exemple.fr").is_err());
+        assert_eq!(take_link(&dir), None);
+        // Un fichier trafiqué qui n'est pas un lien nfr: est ignoré.
+        std::fs::write(dir.join(LINK_FILE), "rm -rf /").unwrap();
+        assert_eq!(take_link(&dir), None);
+        // NumFranc déjà ouvert (verrou tenu) : le second lancement doit s'arrêter et laisser le lien.
+        let tenu = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("numfranc.lock")).unwrap();
+        tenu.try_lock().unwrap();
+        assert_eq!(hand_over_link(&dir, lien), Ok(true));
+        assert_eq!(take_link(&dir).as_deref(), Some(lien));
+        drop(tenu);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

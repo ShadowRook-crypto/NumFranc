@@ -16,6 +16,8 @@ pub struct Settings {
     /// Cœurs utilisés la nuit et le jour (0 = pas de minage).
     pub cores_night: usize,
     pub cores_day: usize,
+    /// Mode expert : tous les onglets visibles (sinon, l'essentiel et un menu « Plus »).
+    pub expert: bool,
 }
 
 /// Couleurs principales proposées : (nom FR, nom EN, couleur claire, couleur sombre).
@@ -40,6 +42,7 @@ impl Default for Settings {
             night_end: 7,
             cores_night: cores.saturating_sub(1).max(1),
             cores_day: 1,
+            expert: false,
         }
     }
 }
@@ -64,6 +67,7 @@ impl Settings {
                 "nuit_fin" => s.night_end = v.parse().unwrap_or(7).min(23),
                 "coeurs_nuit" => s.cores_night = v.parse().unwrap_or(s.cores_night),
                 "coeurs_jour" => s.cores_day = v.parse().unwrap_or(s.cores_day),
+                "expert" => s.expert = v == "oui",
                 _ => {}
             }
         }
@@ -72,7 +76,7 @@ impl Settings {
 
     pub fn save(&self, dir: &Path) {
         let text = format!(
-            "# Réglages NumFranc\ntheme={}\ncouleur={}\nlangue={}\nhoraire={}\nnuit_debut={}\nnuit_fin={}\ncoeurs_nuit={}\ncoeurs_jour={}\n",
+            "# Réglages NumFranc\ntheme={}\ncouleur={}\nlangue={}\nhoraire={}\nnuit_debut={}\nnuit_fin={}\ncoeurs_nuit={}\ncoeurs_jour={}\nexpert={}\n",
             if self.dark { "sombre" } else { "clair" },
             self.accent,
             if self.english { "en" } else { "fr" },
@@ -80,7 +84,8 @@ impl Settings {
             self.night_start,
             self.night_end,
             self.cores_night,
-            self.cores_day
+            self.cores_day,
+            if self.expert { "oui" } else { "non" }
         );
         let _ = std::fs::create_dir_all(dir);
         let _ = std::fs::write(file(dir), text);
@@ -124,7 +129,7 @@ mod tests {
     #[test]
     fn sauvegarde_et_relecture() {
         let dir = std::env::temp_dir().join(format!("nfr-reglages-{}", std::process::id()));
-        let s = Settings { dark: true, accent: 3, english: true, schedule: true, night_start: 21, night_end: 6, cores_night: 3, cores_day: 1 };
+        let s = Settings { dark: true, accent: 3, english: true, schedule: true, night_start: 21, night_end: 6, cores_night: 3, cores_day: 1, expert: true };
         s.save(&dir);
         assert_eq!(Settings::load(&dir), s);
         std::fs::remove_dir_all(&dir).unwrap();

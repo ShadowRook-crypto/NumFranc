@@ -275,6 +275,9 @@ pub fn parse_amount(s: &str) -> Result<u64, String> {
     if v == 0 {
         return Err(crate::i18n::t("le montant doit être positif", "the amount must be positive").into());
     }
+    if v > crate::config::HARD_CAP {
+        return Err(crate::i18n::t("montant trop grand (plus que tous les NFR qui existeront)", "amount too large (more than all the NFR that will ever exist)").into());
+    }
     Ok(v)
 }
 
@@ -794,7 +797,7 @@ impl Wallet {
             let Some(block) = chain.block_at(h) else { continue };
             for tx in block.txs.iter().filter(|t| !t.is_coinbase()) {
                 let spent_by_me = tx.inputs.iter().any(|i| self.is_mine(&i.spender()));
-                let memo = String::from_utf8_lossy(&tx.memo).into_owned();
+                let memo = tx.memo_text();
                 let mine: u64 = tx.outputs.iter().filter(|o| self.is_mine(&o.address)).map(|o| o.amount).sum();
                 let others: Vec<&TxOut> = tx.outputs.iter().filter(|o| !self.is_mine(&o.address)).collect();
                 if spent_by_me && !others.is_empty() {
@@ -835,9 +838,14 @@ impl Wallet {
 fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
-    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
+    use std::os::unix::fs::PermissionsExt;
+    // Fichier neuf créé directement en 0600 (lecture par le seul propriétaire), même si un ancien
+    // fichier temporaire traînait avec d'autres droits ; droits réappliqués par sécurité.
+    let _ = std::fs::remove_file(path);
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
     f.write_all(data)?;
-    f.sync_all()
+    f.sync_all()?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
 }
 
 #[cfg(not(unix))]

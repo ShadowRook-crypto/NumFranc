@@ -31,31 +31,58 @@ impl Mempool {
     }
 
     /// Accepte une transaction si elle est valide pour le prochain bloc.
+    /// Comme Bitcoin, les vérifications vont de la moins chère à la plus chère :
+    /// taille et forme, pièces dépensées existantes, puis seulement les signatures.
     pub fn accept(&mut self, tx: Transaction, chain: &Chain) -> Result<Hash, String> {
-        let txid = tx.txid();
-        if self.txs.contains_key(&txid) {
+        self.precheck(&tx, chain)?;
+        tx.check_stateless().map_err(|e| e.0)?;
+        self.insert_checked(tx, chain)
+    }
+
+    /// À utiliser seulement pour une transaction dont les signatures ont déjà été vérifiées
+    /// (`check_stateless`), par exemple hors des verrous, ou déjà présente dans la file.
+    pub fn accept_verified(&mut self, tx: Transaction, chain: &Chain) -> Result<Hash, String> {
+        self.precheck(&tx, chain)?;
+        self.insert_checked(tx, chain)
+    }
+
+    /// Vérifications bon marché (sans les signatures). Renvoie une erreur dès qu'un point échoue.
+    pub fn precheck(&self, tx: &Transaction, chain: &Chain) -> Result<(), String> {
+        if self.txs.contains_key(&tx.txid()) {
             return Err("déjà connue".into());
         }
         if tx.is_coinbase() {
             return Err("une coinbase ne peut pas circuler seule".into());
         }
-        tx.check_stateless().map_err(|e| e.0)?;
+        if tx.locktime != 0 {
+            return Err("champ locktime non nul (réservé)".into());
+        }
+        tx.check_structure().map_err(|e| e.0)?;
         for i in &tx.inputs {
             if self.spends.contains_key(&i.prev) {
                 return Err("double dépense d'une transaction en attente".into());
             }
+            if !chain.utxo.contains_key(&i.prev) {
+                return Err("entrée inexistante".into());
+            }
         }
-        let fee = check_tx_inputs(&chain.utxo, &tx, chain.height() + 1, chain.next_mtp())?;
-        check_name_op(&chain.names, &tx, fee)?;
+        let fee = check_tx_inputs(&chain.utxo, tx, chain.height() + 1, chain.next_mtp())?;
+        check_name_op(&chain.names, tx, fee)?;
         if let Some(n) = &tx.name_op {
             if self.names.contains(&n.name) {
                 return Err("une autre transaction en attente vise déjà ce pseudo".into());
             }
         }
-        let size = tx.size();
-        if self.bytes + size > MAX_MEMPOOL_BYTES {
+        if self.bytes + tx.size() > MAX_MEMPOOL_BYTES {
             return Err("file d'attente pleine".into());
         }
+        Ok(())
+    }
+
+    fn insert_checked(&mut self, tx: Transaction, chain: &Chain) -> Result<Hash, String> {
+        let txid = tx.txid();
+        let fee = check_tx_inputs(&chain.utxo, &tx, chain.height() + 1, chain.next_mtp())?;
+        let size = tx.size();
         for i in &tx.inputs {
             self.spends.insert(i.prev, txid);
         }
@@ -74,7 +101,8 @@ impl Mempool {
         self.names.clear();
         self.bytes = 0;
         for tx in old {
-            let _ = self.accept(tx, chain);
+            // Signatures déjà vérifiées à l'entrée dans la file : seules les règles liées à l'état changent.
+            let _ = self.accept_verified(tx, chain);
         }
     }
 

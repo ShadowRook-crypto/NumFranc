@@ -108,3 +108,23 @@ pub const MAX_BLOCKS_PER_REPLY: usize = 500;
 pub const DEFAULT_SEEDS: &[&str] = &[];
 /// RPC (pour une future passerelle d'échange) : uniquement en local.
 pub const RPC_ADDR: &str = "127.0.0.1:6911";
+
+/// --- Règles ajoutées en v1.0.0 (audit de sécurité) ---
+/// Date d'activation des nouvelles règles de consensus (19 octobre 2026, 00:00 UTC), comparée au
+/// temps médian (MTP) du bloc parent, comme les soft forks de Bitcoin. Les blocs plus anciens,
+/// déjà acceptés par tout le monde, restent valides tels quels.
+/// Règles concernées : anti « time warp » (BIP94) et `locktime` obligatoirement à 0.
+pub const V1_RULES_MTP: u64 = 1_792_368_000;
+/// Anti « time warp » (comme le BIP94 de Bitcoin) : le premier bloc d'une fenêtre de difficulté
+/// ne peut pas être daté plus de 2 heures avant le bloc précédent.
+pub const MAX_TIMEWARP: u64 = 7_200;
+/// Taille maximale d'une transaction relayée par le réseau (comme la limite « standard » de Bitcoin,
+/// adaptée aux signatures post-quantiques, environ 7 Ko par entrée : ~270 entrées).
+/// Un mineur peut toujours inclure une transaction plus grande (jusqu'à MAX_TX_SIZE) dans son propre bloc.
+pub const MAX_RELAY_TX_SIZE: usize = 2 * 1024 * 1024;
+/// Volume maximal de blocs envoyés en réponse à une seule demande (comme Bitcoin, on envoie
+/// les blocs un par un et on s'arrête à une limite) : 32 Mio.
+pub const MAX_BYTES_PER_REPLY: usize = 32 * 1024 * 1024;
+/// Un pair n'est « en avance » (et ne suspend notre minage) que s'il nous a livré un bloc valide
+/// depuis moins de ce délai, en secondes. Une simple annonce de hauteur ne suffit plus.
+pub const PROVEN_PEER_SECS: u64 = 120;

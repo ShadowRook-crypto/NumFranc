@@ -15,7 +15,7 @@ if len(sys.argv) == 3 and sys.argv[1] == "--check":
     bad = 0
     for line in open(sys.argv[2], encoding="utf-8"):
         line = line.rstrip("\n")
-        if not line:
+        if not line or line.startswith("#"):
             continue
         digest, path = line.split("  ", 1)
         ok = os.path.exists(path) and h(path) == digest

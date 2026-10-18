@@ -2,7 +2,7 @@
 title: NumFranc (NFR)
 subtitle: A peer-to-peer digital currency designed from day one to withstand quantum computers
 kind: Whitepaper
-version: Version 0.7 — October 2026
+version: Version 1.0 — October 2026
 author: ShadowRook
 ---
 
@@ -14,7 +14,7 @@ What sets it apart is a choice made **from the very first block**: all of NumFra
 
 The total supply is fixed at **69,100,000 NFR**, issued over about 98 years at a rate of one block every **691 seconds**. Mining uses Argon2d, a memory-hard function that keeps an ordinary computer competitive. NumFranc also adds features designed for everyday use: readable addresses with a checksum, messages attached to payments, time-locked or cancellable payments, multi-signature, nicknames ("alice.nfr"), and a wallet protected by two passwords and a recovery code split into three pieces.
 
-This document describes NumFranc as implemented in version 0.7 of the software. Features that are only planned are presented separately, in the roadmap.
+This document describes NumFranc as implemented in version 1.0 of the software. Features that are only planned are presented separately, in the roadmap.
 
 ## 1. Why NumFranc
 
@@ -212,6 +212,8 @@ Every **691 blocks**, the target is recalculated from the time that actually ela
 
 The expected time covers the window's 690 intervals: 690 × 691 = 476,790 seconds. The measured time is clamped between a quarter and four times this value, so that a single adjustment cannot change the difficulty by more than a factor of 4. The whole computation uses big integers, with no floating-point rounding.
 
+Since version 1.0, a rule taken from Bitcoin (BIP94) prevents the so-called “time warp” attack: the first block of a window cannot be dated more than 2 hours before the previous block. Without it, a majority miner could date that block in the past to distort the measurement and lower the difficulty. Like the other rules added in 1.0, it applies to blocks whose median time past is after 19 October 2026: older blocks remain valid.
+
 ### 5.4 Block size and throughput
 
 A block can hold up to **8 MiB**. A simple transaction, with one input and two outputs, takes about 7.4 kB, because of the size of ML-DSA keys and signatures. A block can therefore hold about 1,100 such transactions, for a throughput of about **1.6 transactions per second**. That is lower than Bitcoin: it is the price of post-quantum security. Improving throughput is one of the research directions (section 12).
@@ -303,9 +305,10 @@ An attacker controlling most of the mining power could try to rewrite recent his
 
 1. **Cumulative work**: only the chain that required the most computation counts.
 2. **Reorganisation limit**: a node refuses to replace more than **10 blocks** of its active chain (about 1 h 55 min). Beyond that, history is considered final.
-3. **Checkpoints**: the hashes of known blocks can be written into each new software release. This list is empty in version 0.7.
+3. **Checkpoints**: the hashes of known blocks can be written into each new software release. This list is empty in version 1.0.
 4. **Reward maturity**: 100 confirmations before a mining reward can be spent.
-5. **Timestamp rules**: the median time past and the 2-hour limit prevent manipulating the difficulty by cheating on dates.
+5. **Timestamp rules**: the median time past, the 2-hour limit and the anti “time warp” rule (section 5.3) prevent manipulating the difficulty by cheating on dates.
+6. **Dead branches rejected**: a block from a branch that starts more than 10 blocks back, and could therefore never be adopted, is not even stored.
 
 The reorganisation limit has a trade-off worth knowing: if the network were split in two for more than 10 blocks, the two halves would not reconcile automatically. Manual intervention would then be needed. NumFranc considers this risk preferable to that of a deep rewrite of history.
 
@@ -335,6 +338,15 @@ At startup, a node waits 20 seconds to synchronise before starting to mine, so a
 ### 8.3 Transaction pool
 
 Valid transactions not yet included in a block wait in a pool of at most 64 MiB. Only one nickname registration at a time may target a given name there: this prevents a miner from producing a block with two conflicting registrations.
+
+### 8.4 Protections against abuse
+
+An open network inevitably receives messages from malicious peers. Since version 1.0, following a security audit, NumFranc adopts Bitcoin's protections:
+
+- **Proof before trust**: a node pauses mining to synchronise only if a peer has recently **delivered** a valid block. A mere, unverifiable height announcement is not enough.
+- **Blocks sent one by one**: in reply to a request, blocks are read and sent one at a time, up to 500 blocks or 32 MiB. Requests that come too close together are ignored, and an overly insistent peer is disconnected.
+- **Cheapest checks first**: a relayed transaction must not exceed 2 MiB; the node then checks that the spent coins exist, and only at the end the signatures, outside the locks. A wrong signature gets the peer banned for 24 hours.
+- **Two-table peer directory**, modelled on Bitcoin's *addrman*: addresses already tried and new ones. Addresses are grouped by Internet neighbourhood (the first two numbers of the IPv4 address): at most 8 new and 4 tried per neighbourhood, at most 64 brought by the same peer, and random replacement when a table is full. Private addresses (router, local network) coming from the Internet are rejected: computers at home find each other through local discovery. A node opens at most one outbound connection per neighbourhood and accepts at most 4 inbound connections from the same neighbourhood. A peer may send only one address every 10 seconds, on top of the reply to our own request.
 
 ## 9. Wallet
 
@@ -374,15 +386,15 @@ The user can set a threshold. Above it, each payment is sent as a **retained pay
 - **Visual fingerprint**: each address is associated with 4 simple words and a colour, to check at a glance that you are paying the right person.
 - **Attached message**: up to 140 bytes of text, public and signed with the payment.
 - **Address book** and payment to a **nickname**.
-- **Payment links and QR codes**: `nfr:NFR1-…?amount=12.5&message=Thanks`.
+- **Payment links and QR codes**: `nfr:NFR1-…?amount=12.5&message=Thanks`. On Windows and Linux, clicking the link opens NumFranc with the send form already filled in; nothing is paid without checking and without the spending code.
 - **Proof of reserve** (`NFRPROOF1-…`): prove you hold at least a given amount, revealing only the addresses needed and including a word chosen by the verifier, to prevent an old proof from being reused.
 - **Multi-signature proposals** (`NFRMS1-…`): a transaction passed around the members of a group until the threshold is reached.
 
 ## 10. Application and distribution
 
-NumFranc is **a single program**. A double-click opens a window that creates or opens the wallet, then starts the node and mining. The window offers the tabs Home, Receive, Send, History, Address book, Explorer, Network, Security and Settings. The interface is available in **French and English**, with a light or dark theme. One command adds NumFranc to the applications menu, installing nothing outside the user's home folder.
+NumFranc is **a single program**. A double-click opens a window that creates or opens the wallet, then starts the node and mining. The window shows the essentials: Home, Send, Receive, History, Address book and Settings, plus Security and Explain in a “More” menu. **Expert mode** (in Settings) adds Explorer, Issuance, Advanced and Network. The interface is available in **French and English**, with a light or dark theme. One command adds NumFranc to the applications menu, installing nothing outside the user's home folder.
 
-The software is written in **Rust**, a language that rules out whole families of memory errors by design. It is published under the **MIT licence** on GitHub. For each release, a continuous integration service runs the test suite, then builds the program for five platforms: Linux x86-64, Linux ARM64, macOS Apple Silicon, macOS Intel and Windows x86-64. It also produces the archive `NumFranc.zip` and the hash file `SHA3SUMS.txt`.
+The software is written in **Rust**, a language that rules out whole families of memory errors by design. It is published under the **MIT licence** on GitHub. For each release, a continuous integration service runs the test suite, then builds the program for five platforms: Linux x86-64, Linux ARM64, macOS Apple Silicon, macOS Intel and Windows x86-64. It also produces the archive `NumFranc.zip` and the hash file `SHA3SUMS.txt`. The build is **reproducible**: the Rust version, the dependencies and the paths are fixed, so two builds of the same code give exactly the same program. The service checks this by building the Linux version twice; anyone can repeat the test with `scripts/build-reproductible.sh`.
 
 ## 11. Release signing
 
@@ -402,6 +414,8 @@ Verification uses the provided tool:
 
 If the signature is wrong, the tool prints "signature FAUSSE : ne pas utiliser ce fichier" (signature WRONG: do not use this file). This whitepaper itself is included in the signed files.
 
+The **“Check for updates”** button (Settings) performs the same check automatically: it downloads `SHA3SUMS.txt` and its signature, verifies the signature with the public key built into the program, and only offers the new version if it is valid. The version number is read from the first line of the hash file, which is also covered by the signature.
+
 ### 11.3 Protecting the signing key
 
 The secret key was created on a computer disconnected from the network. It no longer exists in full anywhere: it was split by Shamir sharing (two pieces out of three are enough), each piece was encrypted, then stored offline in a separate place. It is rebuilt only for the time needed to sign a release, offline.
@@ -414,11 +428,11 @@ If the signing key were ever compromised, a new key pair would be created, the n
 
 The following items are **not yet implemented**. They are listed without dates, in approximate order of priority:
 
-- **Independent security audit** of the consensus code and the wallet.
+- **Security audit by human experts** of the consensus code and the wallet. A first audit, carried out by an independent artificial intelligence, led to the protections of section 8.4.
 - **Public bootstrap nodes**: always-on nodes to ease the first connection. The current discovery (DHT, local network, UPnP) works without them.
 - **Dedicated signing computer**, never connected, for releases.
 - **Local RPC interface** (`127.0.0.1:6911`), reachable only from the computer itself, for future exchange gateways. The address is reserved in the code but the service does not exist yet.
-- **Simplified mode** of the interface, for beginners.
+- **Headers-first synchronisation** (like Bitcoin): download the light headers first, then the blocks.
 - **Checkpoints** added with each new release.
 - **Throughput**: study of techniques to reduce the space taken by post-quantum signatures in blocks.
 

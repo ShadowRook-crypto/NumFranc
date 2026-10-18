@@ -1,0 +1,5 @@
+# Version exacte de Rust utilisée pour compiler NumFranc : la même partout (GitHub et chez toi),
+# condition indispensable pour que deux compilations donnent exactement le même fichier.
+[toolchain]
+channel = "1.97.0"
+profile = "minimal"

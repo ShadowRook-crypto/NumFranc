@@ -26,6 +26,13 @@ use std::path::{Path, PathBuf};
 /// Données d'annulation conservées pour les derniers blocs actifs (au-delà, réorganisation refusée).
 const UNDO_KEEP: u64 = MAX_REORG_DEPTH + 5;
 
+/// Règle anti « time warp » (BIP94 de Bitcoin) : le premier bloc d'une fenêtre de difficulté ne peut pas
+/// être daté plus de MAX_TIMEWARP secondes avant son parent. Sinon, un mineur majoritaire pourrait dater
+/// ce bloc dans le passé et fausser la mesure de la fenêtre suivante pour faire baisser la difficulté.
+pub fn is_time_warp(height: u64, timestamp: u64, parent_timestamp: u64) -> bool {
+    height % DIFFICULTY_WINDOW == 0 && timestamp.saturating_add(MAX_TIMEWARP) < parent_timestamp
+}
+
 /// Points de contrôle : (hauteur, hash en hexadécimal). À compléter à chaque version publiée.
 pub const CHECKPOINTS: &[(u64, &str)] = &[];
 
@@ -490,8 +497,14 @@ impl Chain {
         if hdr.target != self.expected_target(parent, height) {
             return Err("cible de difficulté incorrecte".into());
         }
-        if hdr.timestamp <= self.median_time_past(parent) {
+        let mtp = self.median_time_past(parent);
+        if hdr.timestamp <= mtp {
             return Err("horodatage trop ancien (MTP)".into());
+        }
+        // Règles v1.0.0, actives à partir de V1_RULES_MTP (les blocs plus anciens restent valides).
+        let v1 = mtp >= V1_RULES_MTP;
+        if v1 && is_time_warp(height, hdr.timestamp, self.index[parent].header.timestamp) {
+            return Err("début de fenêtre de difficulté daté trop tôt (time warp)".into());
         }
         if hdr.timestamp > now.saturating_add(MAX_FUTURE_DRIFT) {
             return Err("horodatage trop loin dans le futur".into());
@@ -514,6 +527,9 @@ impl Chain {
         }
         if block.compute_merkle_root() != hdr.merkle_root {
             return Err("racine de Merkle incorrecte".into());
+        }
+        if v1 && block.txs.iter().any(|t| t.locktime != 0) {
+            return Err("champ locktime non nul (réservé)".into());
         }
         let mut ids = HashSet::new();
         for t in &block.txs {
@@ -558,6 +574,24 @@ impl Chain {
             Some(p) => (p.height, p.work.clone()),
         };
         let height = parent_height + 1;
+        // Comme Bitcoin, on n'enregistre pas un bloc d'une branche qui ne pourra jamais gagner :
+        // si elle part de plus de MAX_REORG_DEPTH blocs en arrière, elle serait de toute façon refusée.
+        // (Pas au rechargement de notre propre fichier : ces blocs y sont déjà.)
+        if loc.is_none() && parent_hash != self.tip() {
+            let mut h = parent_hash;
+            let mut steps = 0u64;
+            while !self.is_active(&h) {
+                steps += 1;
+                if steps > MAX_REORG_DEPTH + 1 {
+                    return Err(ChainError::ReorgTooDeep { depth: steps });
+                }
+                h = self.index[&h].header.previous_block_hash;
+            }
+            let depth = self.height().saturating_sub(self.index[&h].height);
+            if depth > MAX_REORG_DEPTH {
+                return Err(ChainError::ReorgTooDeep { depth });
+            }
+        }
         self.check_block(&block, &parent_hash, height, now, loc.is_some()).map_err(ChainError::Invalid)?;
 
         let work = parent_work + block_work(&block.header.target);
@@ -703,13 +737,19 @@ impl Chain {
         v
     }
 
-    /// Blocs de la chaîne active qui suivent le premier hash connu du localisateur.
-    pub fn blocks_after(&self, locator: &[Hash], max: usize) -> Vec<Block> {
+    /// Hashes des blocs de la chaîne active qui suivent le premier hash connu du localisateur.
+    /// (Comme l'inventaire de Bitcoin : une liste légère ; les blocs sont ensuite lus un par un.)
+    pub fn hashes_after(&self, locator: &[Hash], max: usize) -> Vec<Hash> {
         let start = locator
             .iter()
             .find_map(|h| if self.is_active(h) { Some(self.index[h].height) } else { None })
             .unwrap_or(0);
-        ((start + 1)..=self.height()).take(max).filter_map(|h| self.block_at(h)).collect()
+        ((start + 1)..=self.height()).take(max).filter_map(|h| self.hash_at(h)).collect()
+    }
+
+    /// Blocs de la chaîne active qui suivent le premier hash connu du localisateur (tests et outils).
+    pub fn blocks_after(&self, locator: &[Hash], max: usize) -> Vec<Block> {
+        self.hashes_after(locator, max).iter().filter_map(|h| self.get_block(h)).collect()
     }
 }
 
@@ -937,13 +977,16 @@ pub mod tests {
         let honest_tip = c.tip();
         // L'attaquant prépare en secret une chaîne plus longue depuis le genesis.
         let mut attacker = test_chain();
-        let mut last = Ok(Added::Extended);
+        let mut results = Vec::new();
         for _ in 0..depth + 2 {
             let b = make_block(&attacker, attacker.tip(), vec![], [3; 32], 691, b"attaquant");
             attacker.add_block(b.clone(), now()).unwrap();
-            last = c.add_block(b, now());
+            results.push(c.add_block(b, now()));
         }
-        assert!(matches!(last, Err(ChainError::ReorgTooDeep { .. })));
+        // Le premier bloc de l'attaquant part de trop loin : refusé d'emblée (v1.0.0), donc les suivants
+        // n'ont plus de parent connu. Aucune réorganisation n'a lieu.
+        assert!(matches!(results[0], Err(ChainError::ReorgTooDeep { .. })));
+        assert!(results.iter().all(|r| matches!(r, Err(ChainError::ReorgTooDeep { .. }) | Err(ChainError::Orphan))));
         assert_eq!(c.tip(), honest_tip);
     }
 
@@ -1296,5 +1339,118 @@ pub mod tests {
         b.header.merkle_root = b.compute_merkle_root();
         assert!(mine(&mut b.header, u64::MAX));
         c.add_block(b, now())
+    }
+}
+
+/// Tests des corrections de l'audit de sécurité (v1.0.0).
+#[cfg(test)]
+mod tests_audit {
+    use super::tests::*;
+    use super::*;
+    use crate::signature::KeyPair;
+    use crate::tx::{OutPoint, TxIn};
+
+    const NOW: u64 = GENESIS_TIMESTAMP + 10_000_000;
+
+    /// E3 : une branche qui ne pourra jamais gagner (trop ancienne) n'est plus enregistrée.
+    #[test]
+    fn branche_morte_refusee_avant_enregistrement() {
+        let kp = KeyPair::from_seed(&[1; 32]);
+        let mut c = Chain::with_genesis(test_genesis());
+        for _ in 0..(MAX_REORG_DEPTH + 3) {
+            let b = make_block(&c, c.tip(), vec![], addr(&kp), 691, b"");
+            c.add_block(b, NOW).unwrap();
+        }
+        let g = c.hash_at(0).unwrap();
+        let before = c.mem.len();
+        for i in 0..20u8 {
+            let b = make_block(&c, g, vec![], [3; 32], 691, &[b'x', i]);
+            assert!(matches!(c.add_block(b, NOW), Err(ChainError::ReorgTooDeep { .. })));
+        }
+        assert_eq!(c.mem.len(), before, "aucun bloc mort ne doit être stocké");
+        // Une fourche récente (qui peut encore gagner) reste acceptée, comme dans Bitcoin.
+        let recent = c.hash_at(c.height() - 2).unwrap();
+        let b = make_block(&c, recent, vec![], [4; 32], 691, b"r");
+        assert_eq!(c.add_block(b, NOW), Ok(Added::SideChain));
+    }
+
+    /// E2 : une transaction qui dépense des pièces inexistantes est refusée AVANT la vérification
+    /// (coûteuse) des signatures.
+    #[test]
+    fn fausse_transaction_refusee_sans_verifier_les_signatures() {
+        let kp = KeyPair::from_seed(&[9; 32]);
+        // 300 entrées inexistantes, avec des signatures bidon (qui échoueraient si elles étaient vérifiées).
+        let tx = Transaction::new(
+            (0..300u32)
+                .map(|i| TxIn::single(OutPoint { txid: [7; 64], vout: i }, kp.public_key_bytes().to_vec(), vec![1; crate::signature::SIGNATURE_SIZE]))
+                .collect(),
+            vec![TxOut::new(1, [1; 32])],
+            Vec::new(),
+        );
+        let c = Chain::with_genesis(test_genesis());
+        let mut mp = crate::mempool::Mempool::default();
+        let t = std::time::Instant::now();
+        assert_eq!(mp.accept(tx, &c), Err("entrée inexistante".to_string()));
+        assert!(t.elapsed() < std::time::Duration::from_millis(100), "refus trop lent : {:?}", t.elapsed());
+    }
+
+    /// M1 : la règle anti time warp.
+    #[test]
+    fn regle_anti_time_warp() {
+        let w = DIFFICULTY_WINDOW;
+        // Premier bloc d'une fenêtre daté 3 h avant son parent : refusé.
+        assert!(is_time_warp(w, 1_000_000, 1_000_000 + 3 * 3_600));
+        // Daté 1 h avant : toléré (horloges imparfaites), comme dans Bitcoin (2 h).
+        assert!(!is_time_warp(w, 1_000_000, 1_000_000 + 3_600));
+        // Au milieu d'une fenêtre, seule la règle du temps médian s'applique.
+        assert!(!is_time_warp(w + 1, 1_000_000, 1_000_000 + 3 * 3_600));
+    }
+
+    /// F4 : le champ locktime doit valoir 0 (file d'attente toujours, blocs après l'activation).
+    #[test]
+    fn locktime_reserve() {
+        let kp = KeyPair::from_seed(&[2; 32]);
+        // Avant l'activation : un bloc dont la coinbase a un locktime non nul reste valide (passé inchangé).
+        let mut c = Chain::with_genesis(test_genesis());
+        let mut b = make_block(&c, c.tip(), vec![], addr(&kp), 691, b"");
+        b.txs[0].locktime = 5;
+        b.header.merkle_root = b.compute_merkle_root();
+        assert!(crate::block::mine(&mut b.header, u64::MAX));
+        assert_eq!(c.add_block(b, NOW), Ok(Added::Extended));
+        // On avance l'horloge de la chaîne au-delà de la date d'activation.
+        for _ in 0..8 {
+            let b = make_block(&c, c.tip(), vec![], addr(&kp), 200_000, b"");
+            c.add_block(b, NOW).unwrap();
+        }
+        assert!(c.next_mtp() >= V1_RULES_MTP);
+        let mut b = make_block(&c, c.tip(), vec![], addr(&kp), 691, b"l");
+        b.txs[0].locktime = 5;
+        b.header.merkle_root = b.compute_merkle_root();
+        assert!(crate::block::mine(&mut b.header, u64::MAX));
+        assert!(matches!(c.add_block(b, NOW), Err(ChainError::Invalid(e)) if e.contains("locktime")));
+        // La file d'attente refuse toujours un locktime non nul.
+        let mut tx = Transaction::new(
+            vec![TxIn::single(OutPoint { txid: [7; 64], vout: 0 }, kp.public_key_bytes().to_vec(), vec![1; crate::signature::SIGNATURE_SIZE])],
+            vec![TxOut::new(1, [1; 32])],
+            Vec::new(),
+        );
+        tx.locktime = 1;
+        let mut mp = crate::mempool::Mempool::default();
+        assert!(mp.accept(tx, &c).unwrap_err().contains("locktime"));
+    }
+
+    /// E1 : la réponse à une demande de blocs est une liste légère de hashes, limitée en nombre.
+    #[test]
+    fn inventaire_limite() {
+        let kp = KeyPair::from_seed(&[3; 32]);
+        let mut c = Chain::with_genesis(test_genesis());
+        for _ in 0..12 {
+            let b = make_block(&c, c.tip(), vec![], addr(&kp), 691, b"");
+            c.add_block(b, NOW).unwrap();
+        }
+        let loc = vec![c.hash_at(0).unwrap()];
+        assert_eq!(c.hashes_after(&loc, 5).len(), 5);
+        assert_eq!(c.hashes_after(&loc, 500).len(), 12);
+        assert_eq!(c.hashes_after(&loc, 500)[0], c.hash_at(1).unwrap());
     }
 }

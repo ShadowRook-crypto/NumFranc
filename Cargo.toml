@@ -1,6 +1,6 @@
 [package]
 name = "numfranc"
-version = "0.7.0"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
@@ -20,3 +20,12 @@ rpassword = { version = "7", default-features = false }
 sha3 = "0.12.0"
 socket2 = { version = "0.5", features = ["all"] }
 zeroize = { version = "1", default-features = false, features = ["alloc"] }
+
+# macOS : recevoir les liens nfr:… (Apple Events). Mêmes versions que celles déjà tirées par eframe.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSString"] }
+
+[profile.release]
+# Une seule unité de compilation : un programme un peu plus rapide, et un résultat plus stable d'une machine à l'autre.
+codegen-units = 1

@@ -284,11 +284,11 @@ impl Wallet {
             total += u.2;
             chosen.push(u);
             fee = min_fee(size_for(chosen.len())) + spec.extra_fee;
-            if total >= amount + fee + need_change {
+            if total >= amount.saturating_add(fee).saturating_add(need_change) {
                 break;
             }
         }
-        if total < amount + fee + need_change {
+        if total < amount.saturating_add(fee).saturating_add(need_change) {
             let bal = self.balance(chain, mempool);
             return Err(crate::tf!(
                 "fonds insuffisants : disponible {}, en maturation {}, verrouillé {} (frais {})",
@@ -297,6 +297,14 @@ impl Wallet {
                 crate::wallet::format_amount(bal.immature),
                 crate::wallet::format_amount(bal.locked),
                 crate::wallet::format_amount(fee)
+            ));
+        }
+        // Les nœuds ne relaient pas les transactions trop grosses (comme la limite « standard » de Bitcoin).
+        if size_for(chosen.len()) > crate::config::MAX_RELAY_TX_SIZE {
+            return Err(crate::tf!(
+                "ce paiement utiliserait {} petites pièces : trop gros pour être relayé. Envoie un montant plus petit, ou fais-le en plusieurs fois.",
+                "this payment would use {} small coins: too big to be relayed. Send a smaller amount, or split it into several payments.",
+                chosen.len()
             ));
         }
         if let Some(p) = prefer {
@@ -655,7 +663,7 @@ impl Wallet {
         Ok(ProposalInfo {
             outputs: tx.outputs.iter().map(|o| (o.address, o.amount)).collect(),
             fee: in_sum.map(|s| s.saturating_sub(out_sum)),
-            memo: String::from_utf8_lossy(&tx.memo).into_owned(),
+            memo: tx.memo_text(),
             ready: signatures.iter().all(|(h, m)| *h == *m as usize),
             signatures,
             i_am_member: member,

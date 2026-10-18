@@ -86,6 +86,14 @@ fn parse_args() -> Result<Options, String> {
             "--sans-minage" | "--no-mine" => o.mine = false,
             "--dossier" | "--datadir" => o.data_dir = PathBuf::from(val()?),
             "--console" | "--serveur" | "--server" | "--menu" | "--reduit" => {}
+            // Lien de paiement cliqué (nfr:…) : transmis à la fenêtre, voir numfranc::install::hand_over_link.
+            l if l.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("nfr:")) => {
+                // Le lien est toujours le dernier argument : rien ne doit pouvoir s'y ajouter
+                // (un lien piégé contenant des guillemets ne peut pas glisser d'options).
+                if args.next().is_some() {
+                    return Err("rien n'est accepté après un lien nfr:".into());
+                }
+            }
             "--aide" | "--help" | "-h" => {
                 println!("{HELP}");
                 std::process::exit(0);
@@ -495,7 +503,6 @@ fn console(node: Arc<Node>) {
 
 fn main() {
     println!("NumFranc (NFR) v{} — monnaie post-quantique (ML-DSA-87, SHA3-512, minage Argon2d)", env!("CARGO_PKG_VERSION"));
-    println!("Projet d'apprentissage non audité : ne pas utiliser pour de l'argent réel.");
     let opts = match parse_args() {
         Ok(o) => o,
         Err(e) => {
@@ -525,6 +532,16 @@ fn main() {
     if has("--serveur") || has("--server") {
         run_server(opts);
         return;
+    }
+
+    // Lien de paiement cliqué : on le dépose pour la fenêtre. Si NumFranc est déjà ouvert,
+    // c'est la fenêtre déjà ouverte qui le prendra, et ce second lancement s'arrête ici.
+    if let Some(link) = std::env::args().skip(1).find(|a| a.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("nfr:"))) {
+        match numfranc::install::hand_over_link(&opts.data_dir, &link) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(e) => eprintln!("Lien de paiement ignoré : {e}"),
+        }
     }
 
     // Fenêtre d'application par défaut ; mode texte avec --console (ou si l'affichage est impossible).

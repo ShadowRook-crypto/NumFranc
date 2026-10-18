@@ -1,5 +1,6 @@
 //! Nœud complet : réseau P2P, synchronisation, minage multi-cœurs et portefeuille.
 
+use crate::addrman::{group, is_local_ip, AddrMan, Group, DHT_SOURCE};
 use crate::block::{new_header, Block};
 use crate::chain::{Added, Chain, ChainError};
 use crate::config::*;
@@ -33,10 +34,66 @@ struct Peer {
     label: String,
     outbound: bool,
     writer: Arc<Mutex<TcpStream>>,
+    /// Hauteur PROUVÉE : celle du meilleur bloc valide que ce pair nous a livré.
     height: u64,
+    /// Hauteur ANNONCÉE (Version, Tip) : sert seulement à savoir s'il faut lui demander des blocs.
+    claimed: u64,
+    /// Dernière fois que ce pair nous a livré un bloc valide (preuve de travail vérifiée).
+    last_valid: Option<Instant>,
     sync_from: Option<u64>,
     remote_nonce: u64,
+    /// Limite de débit des demandes de blocs (comme Bitcoin : une à la fois, sans excès).
+    last_getblocks: Option<Instant>,
+    excess_getblocks: u32,
+    /// Jetons pour recevoir des adresses (0,1 par seconde, plus 1 000 après notre demande GetAddr).
+    addr_tokens: f64,
+    addr_refill: Instant,
+    /// On ne répond qu'une fois par connexion à GetAddr (comme Bitcoin).
+    addr_answered: bool,
+    /// Transactions refusées récemment (au-delà de la limite, le pair est déconnecté).
+    rejects: u32,
+    rejects_since: Instant,
 }
+
+impl Peer {
+    fn new(addr: SocketAddr, label: String, outbound: bool, writer: Arc<Mutex<TcpStream>>) -> Self {
+        Peer {
+            addr,
+            label,
+            outbound,
+            writer,
+            height: 0,
+            claimed: 0,
+            last_valid: None,
+            sync_from: None,
+            remote_nonce: 0,
+            last_getblocks: None,
+            excess_getblocks: 0,
+            addr_tokens: 1.0,
+            addr_refill: Instant::now(),
+            addr_answered: false,
+            rejects: 0,
+            rejects_since: Instant::now(),
+        }
+    }
+
+    fn proven_ahead(&self, ours: u64) -> bool {
+        proven_ahead(self.claimed.max(self.height), self.last_valid, ours)
+    }
+}
+
+/// Un pair n'est « en avance » que s'il l'annonce ET qu'il nous a livré récemment un bloc valide
+/// (preuve de travail vérifiée). Une annonce seule, même énorme, ne suspend jamais notre minage.
+fn proven_ahead(announced: u64, last_valid: Option<Instant>, ours: u64) -> bool {
+    announced > ours && last_valid.is_some_and(|t| t.elapsed() < Duration::from_secs(PROVEN_PEER_SECS))
+}
+
+/// Au plus 4 connexions entrantes par quartier d'Internet (les adresses locales ne sont pas limitées).
+const MAX_INBOUND_PER_GROUP: usize = 4;
+/// Au-delà de 100 transactions refusées en 10 minutes, le pair est déconnecté.
+const MAX_REJECTS: u32 = 100;
+/// Au-delà de 60 demandes de blocs trop rapprochées, le pair est déconnecté.
+const MAX_EXCESS_GETBLOCKS: u32 = 60;
 
 pub struct Node {
     pub chain: Mutex<Chain>,
@@ -44,7 +101,9 @@ pub struct Node {
     pub wallet: Mutex<Wallet>,
     peers: Mutex<HashMap<u64, Peer>>,
     next_peer: AtomicU64,
-    known: Mutex<HashSet<String>>,
+    /// Annuaire des pairs (modèle « addrman » de Bitcoin : adresses nouvelles et testées).
+    addrman: Mutex<AddrMan>,
+    addrman_saved: Mutex<Instant>,
     attempts: Mutex<HashMap<String, Instant>>,
     banned: Mutex<HashMap<IpAddr, Instant>>,
     tip_version: AtomicU64,
@@ -132,19 +191,15 @@ impl Node {
         let chain = Chain::open(&opts.data_dir.join("blocks.dat")).map_err(|e| e.to_string())?;
         let mut nonce_bytes = [0u8; 8];
         let _ = getrandom::getrandom(&mut nonce_bytes);
-        let known: HashSet<String> = std::fs::read_to_string(opts.data_dir.join("peers.txt"))
-            .unwrap_or_default()
-            .lines()
-            .map(|l| l.trim().to_string())
-            .filter(|l| !l.is_empty())
-            .collect();
+        let addrman = AddrMan::from_text(&std::fs::read_to_string(opts.data_dir.join("peers.txt")).unwrap_or_default());
         let node = Arc::new(Node {
             chain: Mutex::new(chain),
             mempool: Mutex::new(Mempool::default()),
             wallet: Mutex::new(wallet),
             peers: Mutex::new(HashMap::new()),
             next_peer: AtomicU64::new(1),
-            known: Mutex::new(known),
+            addrman: Mutex::new(addrman),
+            addrman_saved: Mutex::new(Instant::now()),
             attempts: Mutex::new(HashMap::new()),
             banned: Mutex::new(HashMap::new()),
             tip_version: AtomicU64::new(0),
@@ -212,11 +267,38 @@ impl Node {
         }
     }
 
+    /// Coupe la connexion avec un pair (sans l'exclure 24 h).
+    fn disconnect(&self, id: u64, reason: &str) {
+        if let Some(p) = self.peers.lock().unwrap().remove(&id) {
+            log(&crate::tf!("[i] Pair {} déconnecté : {reason}", "[i] Peer {} disconnected: {reason}", p.addr));
+            let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
+        }
+    }
+
+    /// Enregistre l'annuaire dans peers.txt (au plus une fois par minute, ou tout de suite si `now`).
+    fn save_addrman(&self, now: bool) {
+        let mut last = self.addrman_saved.lock().unwrap();
+        if now || last.elapsed() > Duration::from_secs(60) {
+            *last = Instant::now();
+            let text = self.addrman.lock().unwrap().to_text();
+            let _ = std::fs::write(self.opts.data_dir.join("peers.txt"), text);
+        }
+    }
+
     fn accept_loop(self: Arc<Self>, listener: TcpListener) {
         for stream in listener.incoming().flatten() {
             let Ok(addr) = stream.peer_addr() else { continue };
-            let inbound = self.peers.lock().unwrap().values().filter(|p| !p.outbound).count();
-            if inbound >= MAX_INBOUND || self.is_banned(&addr.ip()) {
+            let (inbound, same_group) = {
+                let peers = self.peers.lock().unwrap();
+                let g = group(&addr.ip());
+                (
+                    peers.values().filter(|p| !p.outbound).count(),
+                    peers.values().filter(|p| !p.outbound && group(&p.addr.ip()) == g).count(),
+                )
+            };
+            // Comme Bitcoin : pas toutes les places entrantes pour un même quartier d'Internet.
+            let crowded = !is_local_ip(&addr.ip()) && same_group >= MAX_INBOUND_PER_GROUP;
+            if inbound >= MAX_INBOUND || crowded || self.is_banned(&addr.ip()) {
                 continue;
             }
             let n = self.clone();
@@ -226,14 +308,30 @@ impl Node {
 
     fn connect_loop(self: Arc<Self>) {
         loop {
-            let (outbound, connected): (usize, HashSet<String>) = {
+            let (outbound, connected, groups): (usize, HashSet<String>, HashSet<Group>) = {
                 let p = self.peers.lock().unwrap();
-                (p.values().filter(|p| p.outbound).count(), p.values().map(|p| p.label.clone()).collect())
+                (
+                    p.values().filter(|p| p.outbound).count(),
+                    p.values().map(|p| p.label.clone()).collect(),
+                    // Comme Bitcoin : au plus une connexion sortante par quartier d'Internet.
+                    p.values().filter(|p| p.outbound && !is_local_ip(&p.addr.ip())).map(|p| group(&p.addr.ip())).collect(),
+                )
             };
             if outbound < MAX_OUTBOUND {
+                // Pairs choisis à la main (noeuds.txt, --pair) et nœuds d'amorçage : toujours essayés.
                 let mut candidates: Vec<String> = self.opts.peers.clone();
                 candidates.extend(DEFAULT_SEEDS.iter().map(|s| s.to_string()));
-                candidates.extend(self.known.lock().unwrap().iter().cloned());
+                // Puis des adresses de l'annuaire, chacune dans un quartier différent.
+                {
+                    let mut am = self.addrman.lock().unwrap();
+                    let mut exclude = groups.clone();
+                    for _ in outbound..MAX_OUTBOUND {
+                        let Some(a) = am.select(&exclude) else { break };
+                        exclude.insert(group(&a.ip()));
+                        am.attempt(&a);
+                        candidates.push(a.to_string());
+                    }
+                }
                 for c in candidates {
                     if connected.contains(&c) {
                         continue;
@@ -249,6 +347,7 @@ impl Node {
                     std::thread::spawn(move || n.connect_to(c));
                 }
             }
+            self.save_addrman(false);
             std::thread::sleep(Duration::from_secs(5));
         }
     }
@@ -271,10 +370,7 @@ impl Node {
         let Ok(writer) = stream.try_clone() else { return };
         let id = self.next_peer.fetch_add(1, Ordering::SeqCst);
         let writer = Arc::new(Mutex::new(writer));
-        self.peers.lock().unwrap().insert(
-            id,
-            Peer { addr, label, outbound, writer, height: 0, sync_from: None, remote_nonce: 0 },
-        );
+        self.peers.lock().unwrap().insert(id, Peer::new(addr, label, outbound, writer));
         let height = self.chain.lock().unwrap().height();
         let listen_port = self.public_port.load(Ordering::SeqCst);
         self.send(id, &Message::Version { version: PROTOCOL_VERSION, height, listen_port, nonce: self.nonce });
@@ -336,16 +432,22 @@ impl Node {
                 if nonce == self.nonce || version != PROTOCOL_VERSION {
                     if let Some(p) = self.peers.lock().unwrap().remove(&id) {
                         let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
-                        if nonce == self.nonce {
-                            self.known.lock().unwrap().remove(&p.label);
+                        if nonce == self.nonce && p.outbound {
+                            // Connexion à nous-mêmes : on oublie cette adresse.
+                            if let Ok(a) = p.label.parse::<SocketAddr>() {
+                                self.addrman.lock().unwrap().remove(&a);
+                            }
                         }
                     }
                     return;
                 }
                 // Même nœud déjà connecté par un autre chemin : on garde une seule connexion.
+                // On exige la même adresse IP : sinon un pirate pourrait recopier le numéro
+                // d'un nœud honnête pour le faire rejeter.
                 {
                     let mut peers = self.peers.lock().unwrap();
-                    if peers.iter().any(|(pid, p)| *pid != id && p.remote_nonce == nonce) {
+                    let ip = peers.get(&id).map(|p| p.addr.ip());
+                    if peers.iter().any(|(pid, p)| *pid != id && p.remote_nonce == nonce && Some(p.addr.ip()) == ip) {
                         if let Some(p) = peers.remove(&id) {
                             let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
                         }
@@ -355,19 +457,18 @@ impl Node {
                         p.remote_nonce = nonce;
                     }
                 }
-                let mut new_addr = None;
                 if let Some(p) = self.peers.lock().unwrap().get_mut(&id) {
-                    p.height = height;
+                    p.claimed = height;
+                    // Notre demande GetAddr ci-dessous autorise une réponse de 1 000 adresses.
+                    p.addr_tokens += 1_000.0;
                     if p.outbound {
-                        new_addr = Some(p.label.clone());
+                        // Connexion sortante réussie : l'adresse passe dans les « testées ».
+                        self.addrman.lock().unwrap().good(p.addr);
                     } else if listen_port != 0 {
-                        let a = SocketAddr::new(p.addr.ip(), listen_port).to_string();
-                        p.label = a.clone();
-                        new_addr = Some(a);
+                        let a = SocketAddr::new(p.addr.ip(), listen_port);
+                        p.label = a.to_string();
+                        self.addrman.lock().unwrap().add(a, group(&p.addr.ip()));
                     }
-                }
-                if let Some(a) = new_addr {
-                    self.remember(a);
                 }
                 self.send(id, &Message::Verack);
                 self.send(id, &Message::GetAddr);
@@ -378,23 +479,68 @@ impl Node {
             Message::Verack | Message::Pong(_) => {}
             Message::Ping(n) => self.send(id, &Message::Pong(n)),
             Message::GetAddr => {
-                let list: Vec<String> = self.known.lock().unwrap().iter().take(100).cloned().collect();
-                self.send(id, &Message::Addr(list));
+                // Une seule réponse par connexion, avec un échantillon au hasard (comme Bitcoin).
+                let first = self.peers.lock().unwrap().get_mut(&id).is_some_and(|p| !std::mem::replace(&mut p.addr_answered, true));
+                if first {
+                    let list: Vec<String> = self.addrman.lock().unwrap().sample(250).iter().map(|a| a.to_string()).collect();
+                    self.send(id, &Message::Addr(list));
+                }
             }
             Message::Addr(list) => {
-                for a in list.into_iter().take(100) {
-                    if a.parse::<SocketAddr>().is_ok() {
-                        self.remember(a);
+                // Débit limité : 0,1 adresse par seconde, plus la réponse à notre propre demande.
+                let (source, mut allowed) = {
+                    let mut peers = self.peers.lock().unwrap();
+                    let Some(p) = peers.get_mut(&id) else { return };
+                    p.addr_tokens = (p.addr_tokens + p.addr_refill.elapsed().as_secs_f64() * 0.1).min(1_000.0 + 1.0);
+                    p.addr_refill = Instant::now();
+                    let allowed = (p.addr_tokens.floor() as usize).min(list.len());
+                    p.addr_tokens -= allowed as f64;
+                    (group(&p.addr.ip()), allowed)
+                };
+                let mut am = self.addrman.lock().unwrap();
+                for a in list {
+                    if allowed == 0 {
+                        break;
+                    }
+                    allowed -= 1;
+                    if let Ok(addr) = a.parse::<SocketAddr>() {
+                        am.add(addr, source);
                     }
                 }
             }
             Message::GetBlocks(loc) => {
-                let (blocks, h) = {
-                    let c = self.chain.lock().unwrap();
-                    (c.blocks_after(&loc, MAX_BLOCKS_PER_REPLY), c.height())
+                // Comme Bitcoin : pas de rafale de demandes ; les blocs sont lus et envoyés un par un,
+                // jusqu'à MAX_BLOCKS_PER_REPLY blocs ou MAX_BYTES_PER_REPLY octets.
+                let (accepted, excess) = {
+                    let mut peers = self.peers.lock().unwrap();
+                    let Some(p) = peers.get_mut(&id) else { return };
+                    if p.last_getblocks.is_some_and(|t| t.elapsed() < Duration::from_secs(1)) {
+                        p.excess_getblocks += 1;
+                        (false, p.excess_getblocks)
+                    } else {
+                        p.last_getblocks = Some(Instant::now());
+                        (true, p.excess_getblocks)
+                    }
                 };
-                for b in blocks {
+                if excess > MAX_EXCESS_GETBLOCKS {
+                    self.disconnect(id, "trop de demandes de blocs");
+                    return;
+                }
+                if !accepted {
+                    return;
+                }
+                let (hashes, h) = {
+                    let c = self.chain.lock().unwrap();
+                    (c.hashes_after(&loc, MAX_BLOCKS_PER_REPLY), c.height())
+                };
+                let mut sent = 0usize;
+                for hash in hashes {
+                    let Some(b) = self.chain.lock().unwrap().get_block(&hash) else { break };
+                    sent += b.serialize().len();
                     self.send(id, &Message::Block(b));
+                    if sent >= MAX_BYTES_PER_REPLY {
+                        break;
+                    }
                 }
                 self.send(id, &Message::Tip(h));
             }
@@ -403,7 +549,7 @@ impl Node {
                     let ours = self.chain.lock().unwrap().height();
                     let mut p = self.peers.lock().unwrap();
                     let last = p.get_mut(&id).map(|p| {
-                        p.height = h;
+                        p.claimed = h;
                         p.sync_from.take()
                     });
                     (ours, last.flatten())
@@ -414,23 +560,58 @@ impl Node {
                 }
             }
             Message::Block(b) => self.on_block(b, Some(id)),
-            Message::Tx(tx) => {
-                let res = {
-                    let c = self.chain.lock().unwrap();
-                    self.mempool.lock().unwrap().accept(tx.clone(), &c)
-                };
-                if res.is_ok() {
-                    self.tip_version.fetch_add(1, Ordering::SeqCst);
-                    self.broadcast(&Message::Tx(tx), Some(id));
-                }
-            }
+            Message::Tx(tx) => self.on_tx(id, tx),
         }
     }
 
-    fn remember(&self, addr: String) {
-        let mut k = self.known.lock().unwrap();
-        if k.len() < 1_000 && k.insert(addr) {
-            let _ = std::fs::write(self.opts.data_dir.join("peers.txt"), k.iter().cloned().collect::<Vec<_>>().join("\n"));
+    /// Transaction reçue d'un pair. Comme Bitcoin : vérifications de la moins chère à la plus chère,
+    /// signatures en dernier et hors des verrous ; une signature fausse vaut exclusion.
+    fn on_tx(&self, id: u64, tx: Transaction) {
+        if tx.size() > MAX_RELAY_TX_SIZE {
+            self.reject_tx(id, "transaction trop grande pour être relayée");
+            return;
+        }
+        let pre = {
+            let c = self.chain.lock().unwrap();
+            let mp = self.mempool.lock().unwrap();
+            if mp.contains(&tx.txid()) {
+                return; // déjà reçue d'un autre pair : normal
+            }
+            mp.precheck(&tx, &c)
+        };
+        if let Err(e) = pre {
+            self.reject_tx(id, &e);
+            return;
+        }
+        if let Err(e) = tx.check_stateless() {
+            self.ban(id, &format!("transaction avec signature invalide : {}", e.0));
+            return;
+        }
+        let res = {
+            let c = self.chain.lock().unwrap();
+            self.mempool.lock().unwrap().accept_verified(tx.clone(), &c)
+        };
+        if res.is_ok() {
+            self.tip_version.fetch_add(1, Ordering::SeqCst);
+            self.broadcast(&Message::Tx(tx), Some(id));
+        }
+    }
+
+    /// Transaction refusée sans preuve de mauvaise foi (pièce déjà dépensée, course entre nœuds…) :
+    /// on compte ; au-delà de MAX_REJECTS en 10 minutes, le pair est déconnecté.
+    fn reject_tx(&self, id: u64, _why: &str) {
+        let too_many = {
+            let mut peers = self.peers.lock().unwrap();
+            let Some(p) = peers.get_mut(&id) else { return };
+            if p.rejects_since.elapsed() > Duration::from_secs(600) {
+                p.rejects = 0;
+                p.rejects_since = Instant::now();
+            }
+            p.rejects += 1;
+            p.rejects > MAX_REJECTS
+        };
+        if too_many {
+            self.disconnect(id, "trop de transactions refusées");
         }
     }
 
@@ -444,7 +625,7 @@ impl Node {
             }
             let amount: u64 = tx.outputs.iter().filter(|o| w.is_mine(&o.address)).map(|o| o.amount).sum();
             if amount > 0 {
-                let memo = String::from_utf8_lossy(&tx.memo);
+                let memo = tx.memo_text();
                 let memo = if memo.is_empty() { String::new() } else { crate::tf!(" — message : « {memo} »", " — message: “{memo}”") };
                 log(&crate::tf!("[€] Paiement reçu : {}{memo}", "[€] Payment received: {}{memo}", format_amount(amount)));
             }
@@ -452,12 +633,8 @@ impl Node {
     }
 
     pub fn on_block(&self, block: Block, from: Option<u64>) {
+        // Hauteur lue dans la coinbase : elle n'est crue qu'APRÈS validation du bloc (voir plus bas).
         let height_hint = block.txs.first().and_then(|t| t.coinbase_height()).unwrap_or(0);
-        if let Some(id) = from {
-            if let Some(p) = self.peers.lock().unwrap().get_mut(&id) {
-                p.height = p.height.max(height_hint);
-            }
-        }
         let reward_to_me = from.is_none();
         let res = {
             let mut c = self.chain.lock().unwrap();
@@ -467,6 +644,13 @@ impl Node {
             }
             r
         };
+        // Bloc valide (preuve de travail vérifiée) : le pair a prouvé sa hauteur.
+        if let (Some(id), Ok(_)) = (from, &res) {
+            if let Some(p) = self.peers.lock().unwrap().get_mut(&id) {
+                p.height = p.height.max(height_hint);
+                p.last_valid = Some(Instant::now());
+            }
+        }
         match res {
             Ok(Added::Extended) | Ok(Added::Reorganized { .. }) => {
                 self.tip_version.fetch_add(1, Ordering::SeqCst);
@@ -598,19 +782,19 @@ impl Node {
         }
     }
 
-    /// Le minage ne démarre qu'après la recherche initiale de pairs, et jamais
-    /// quand un pair connu a une chaîne plus haute (on se synchronise d'abord).
+    /// Le minage ne démarre qu'après la recherche initiale de pairs, et s'arrête pendant
+    /// qu'on rattrape un pair en avance. Comme Bitcoin, on ne croit pas une simple annonce :
+    /// le pair doit nous avoir livré récemment un bloc valide (preuve de travail vérifiée).
     pub fn ready_to_mine(&self) -> bool {
         if self.started.elapsed() < Duration::from_secs(STARTUP_SYNC_SECS) {
             return false;
         }
-        let ours = self.chain.lock().unwrap().height();
-        !self.peers.lock().unwrap().values().any(|p| p.height > ours)
+        !self.is_syncing()
     }
 
     pub fn is_syncing(&self) -> bool {
         let ours = self.chain.lock().unwrap().height();
-        self.peers.lock().unwrap().values().any(|p| p.height > ours)
+        self.peers.lock().unwrap().values().any(|p| p.proven_ahead(ours))
     }
 
     // ---------- Découverte automatique (réseau local) ----------
@@ -706,25 +890,6 @@ impl Node {
 
     // ---------- Découverte mondiale sans serveur (DHT BitTorrent) ----------
 
-    /// Tente une connexion vers `target` si on n'y est pas déjà connecté
-    /// et qu'on n'a pas essayé récemment.
-    fn try_connect(self: &Arc<Self>, target: String) -> bool {
-        let already = self.peers.lock().unwrap().values().any(|p| p.label == target || p.addr.to_string() == target);
-        if already {
-            return false;
-        }
-        {
-            let mut a = self.attempts.lock().unwrap();
-            if a.get(&target).is_some_and(|t| t.elapsed() < Duration::from_secs(120)) {
-                return false;
-            }
-            a.insert(target.clone(), Instant::now());
-        }
-        let n = self.clone();
-        std::thread::spawn(move || n.connect_to(target));
-        true
-    }
-
     /// Les nœuds NumFranc se retrouvent dans l'annuaire public et décentralisé de
     /// BitTorrent (des millions d'ordinateurs), sous un identifiant propre à NumFranc.
     /// Aucun serveur NumFranc, aucune adresse à publier soi-même.
@@ -756,7 +921,8 @@ impl Node {
                     if Some(addr) == me {
                         continue; // notre propre inscription
                     }
-                    if self.try_connect(addr.to_string()) {
+                    // Comme les autres adresses, elles passent par l'annuaire (limites par quartier).
+                    if self.addrman.lock().unwrap().add(addr, DHT_SOURCE) {
                         found += 1;
                     }
                 }
@@ -780,6 +946,26 @@ impl Node {
             let b = self.hashes.load(Ordering::Relaxed);
             self.hashrate.store((b - a) / 5, Ordering::Relaxed);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_audit {
+    use super::*;
+
+    /// C1 : un menteur qui annonce une hauteur énorme sans livrer de bloc valide n'arrête pas le minage.
+    #[test]
+    fn annonce_sans_preuve_ignoree() {
+        assert!(!proven_ahead(u64::MAX, None, 100));
+        // Un vrai pair en avance, qui vient de nous livrer un bloc valide : on se synchronise d'abord.
+        assert!(proven_ahead(150, Some(Instant::now()), 100));
+        // Un pair qui ne livre plus rien depuis longtemps ne bloque plus le minage.
+        let old = Instant::now().checked_sub(Duration::from_secs(PROVEN_PEER_SECS + 5));
+        if let Some(old) = old {
+            assert!(!proven_ahead(150, Some(old), 100));
+        }
+        // Pas en avance : rien à rattraper.
+        assert!(!proven_ahead(100, Some(Instant::now()), 100));
     }
 }
 

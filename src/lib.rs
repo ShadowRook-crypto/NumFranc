@@ -8,7 +8,11 @@ pub mod encoding;
 pub mod events;
 pub mod gui;
 pub mod i18n;
+pub mod addrman;
 pub mod install;
+pub mod maj;
+#[cfg(target_os = "macos")]
+pub mod mac_liens;
 pub mod settings;
 pub mod hashing;
 pub mod mempool;

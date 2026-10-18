@@ -38,16 +38,16 @@ NumFranc (NFR) — mode d'emploi
    Pour accepter des connexions depuis Internet, ouvrez le port TCP 6910 sur la box.
 
 4. LA FENÊTRE (français ou anglais)
-   Accueil (solde, minage, réseau, graphique des gains sur 7 ou 30 jours),
-   Recevoir (adresse, empreinte, QR code), Envoyer, Historique (export en tableur CSV),
-   Carnet d'adresses, Explorateur (chaque bloc, ses paiements et messages publics),
-   Réseau, Sécurité (code de secours, changement des mots de passe),
+   L'essentiel : Accueil (solde, minage, réseau, graphique des gains sur 7 ou 30 jours),
+   Envoyer, Recevoir (adresse, empreinte, QR code), Historique (export en tableur CSV),
+   Carnet d'adresses, Réglages ; et dans « Plus… » : Sécurité (code de secours,
+   changement des mots de passe) et Explications (mode pas à pas).
+   Le MODE EXPERT (Réglages) ajoute : Explorateur (chaque bloc, ses paiements et messages publics),
    Émission (combien de NFR existent, combien restent, paliers à venir),
-   Explications (mode pas à pas : un bloc ou une transaction),
    Avancé (gel, paiements annulables, pseudos, groupes à plusieurs signatures,
-   preuve de réserve, demande de paiement, démarrage automatique),
-   Réglages (langue, thème clair ou sombre, couleur, minage selon un horaire nuit/jour,
-   ajout de NumFranc au menu des applications pour le lancer sans Terminal).
+   preuve de réserve, demande de paiement, démarrage automatique) et Réseau.
+   Réglages : langue, thème clair ou sombre, couleur, minage selon un horaire nuit/jour,
+   vérification des mises à jour, mode expert, ajout de NumFranc au menu des applications.
    EMPREINTE : chaque adresse a une empreinte de 4 mots + une couleur
    (ex. « jasmin gorille horloge jonque — rouge »). Vérifiez-la avec la personne
    (par téléphone par exemple) avant d'enregistrer son adresse : un virus peut
@@ -75,7 +75,20 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. NOUVEAUTÉS DE LA v0.6
+6. NOUVEAUTÉS DE LA v1.0.0
+   - Nouveau logo, et une fenêtre plus simple : 6 onglets, le reste dans « Plus… » ou le mode expert.
+   - Liens de paiement cliquables : un clic sur un lien nfr:… ouvre NumFranc sur « Envoyer », déjà rempli
+     (rien n'est envoyé sans votre vérification et votre code de dépense). Pour l'activer, cliquez une fois
+     sur « Ajouter NumFranc au menu des applications » (Réglages).
+   - Bouton « Vérifier les mises à jour » : une nouvelle version n'est proposée que si sa signature est valide.
+   - Compilation reproductible : chacun peut recompiler et obtenir exactement le même programme.
+   - Sécurité du réseau renforcée après un audit (comme Bitcoin) : un pair doit prouver ce qu'il annonce,
+     les abus sont limités et déconnectés, l'annuaire des pairs résiste à l'empoisonnement.
+   - Deux règles de consensus ajoutées, actives à partir du 19 octobre 2026 (anti « time warp », champ
+     locktime à 0). Elles ne changent rien aux blocs déjà minés ; mettez quand même à jour vos nœuds.
+   - Aucun changement de chaîne ni de portefeuille : les v0.7 et v1.0.0 se parlent.
+
+7. NOUVEAUTÉS DE LA v0.6
    - Pseudos : « alice.nfr » à la place de l'adresse de 77 caractères (inscrit dans la chaîne ;
      frais uniques : 100 NFR pour 3 lettres, 25 pour 4, 5 pour 5 à 7, 1 à partir de 8).
      Dans Envoyer, on peut écrire le pseudo, une adresse, un nom du carnet ou un lien nfr:….
@@ -92,7 +105,7 @@ NumFranc (NFR) — mode d'emploi
    - Le fichier du portefeuille passe au format 04 à la première ouverture : une v0.5 ne pourra plus le lire.
      Faites une copie de wallet.dat avant la mise à jour si vous voulez pouvoir revenir en arrière.
 
-7. BON À SAVOIR
+8. BON À SAVOIR
    - Une récompense de minage devient dépensable après 100 blocs.
    - Un paiement est considéré comme sûr après 6 blocs.
    - Les données sont dans : Mac ~/Library/Application Support/NumFranc,
@@ -104,10 +117,11 @@ NumFranc (NFR) — mode d'emploi
    - Nœud permanent (serveur, sans portefeuille ni minage) : voir SERVEUR.txt.
 
 MISE À JOUR depuis une ancienne version :
+   - depuis la v0.6 ou la v0.7 : remplacez simplement le dossier NumFranc, tout est conservé ;
    - depuis la v0.5 ou avant : voir « NOUVEAUTÉS DE LA v0.6 » (nouvelle chaîne, automatique) ;
    - depuis la v0.2 (adresses NFR1-XXXX) : le portefeuille est conservé, mais la chaîne
      repart de zéro (nouvel algorithme de minage) : renommez le fichier blocks.dat
      du dossier de données en blocks-ancien.dat ;
    - depuis la v0.1 (adresses NFR1 + 128 caractères) : déplacez tout le dossier de données.
 
-Projet d'apprentissage non audité : ne pas utiliser pour de l'argent réel.
+Logiciel fourni sans garantie (licence MIT).
