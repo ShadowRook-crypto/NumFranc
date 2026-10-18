@@ -20,7 +20,7 @@ pub struct Settings {
 
 /// Couleurs principales proposées : (nom FR, nom EN, couleur claire, couleur sombre).
 pub const ACCENTS: [(&str, &str, [u8; 3], [u8; 3]); 6] = [
-    ("Bleu", "Blue", [0, 85, 164], [90, 160, 255]),
+    ("Bleu", "Blue", [0, 38, 84], [130, 170, 230]),
     ("Vert", "Green", [20, 130, 70], [80, 200, 130]),
     ("Violet", "Purple", [110, 60, 170], [175, 130, 240]),
     ("Orange", "Orange", [200, 100, 0], [255, 160, 70]),

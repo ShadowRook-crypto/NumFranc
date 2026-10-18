@@ -1801,15 +1801,20 @@ fn draw_logo(painter: &egui::Painter, r: egui::Rect) {
             })
             .collect()
     };
-    painter.add(egui::Shape::convex_polygon(hex(rad), Color32::from_rgb(232, 178, 58), egui::Stroke::NONE));
-    painter.add(egui::Shape::convex_polygon(hex(rad * 0.88), Color32::from_rgb(14, 32, 74), egui::Stroke::NONE));
-    let s = rad * 0.9;
+    // Mêmes couleurs que assets/logo.svg : bleu marine #002654, blanc, bleu clair #AFC8E6, rouge #E1000F.
+    let marine = Color32::from_rgb(0, 38, 84);
+    painter.add(egui::Shape::convex_polygon(hex(rad), marine, egui::Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(hex(rad * 0.92), Color32::WHITE, egui::Stroke::NONE));
+    let s = rad * 0.78;
     let (x0, y0) = (c.x - s / 2.0, c.y - s / 2.0);
     let pts = [egui::pos2(x0, y0 + s), egui::pos2(x0, y0), egui::pos2(x0 + s, y0 + s), egui::pos2(x0 + s, y0)];
-    let stroke = egui::Stroke::new(rad * 0.16, Color32::from_rgb(246, 248, 252));
+    let stroke = egui::Stroke::new(rad * 0.13, marine);
     painter.line_segment([pts[0], pts[1]], stroke);
     painter.line_segment([pts[1], pts[2]], stroke);
     painter.line_segment([pts[2], pts[3]], stroke);
+    for p in pts {
+        painter.circle(p, rad * 0.09, Color32::WHITE, egui::Stroke::new(rad * 0.045, marine));
+    }
 }
 
 /// Prépare, signe et diffuse un paiement. Renvoie les frais.

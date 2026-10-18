@@ -48,20 +48,20 @@ NumFranc is a network of equal nodes. Each node keeps the full blockchain, check
 
 <div class="figure">
 <svg viewBox="0 0 640 170" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" font-size="11">
-  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1f3a5f"/></marker></defs>
-  <g fill="#f3f6fa" stroke="#1f3a5f" stroke-width="1.2">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#002654"/></marker></defs>
+  <g fill="#f3f6fa" stroke="#002654" stroke-width="1.2">
     <rect x="10" y="20" width="170" height="125" rx="6"/>
     <rect x="235" y="20" width="170" height="125" rx="6"/>
     <rect x="460" y="20" width="170" height="125" rx="6"/>
   </g>
-  <g fill="#1f3a5f" font-weight="600"><text x="95" y="40" text-anchor="middle">Block n-1</text><text x="320" y="40" text-anchor="middle">Block n</text><text x="545" y="40" text-anchor="middle">Block n+1</text></g>
+  <g fill="#002654" font-weight="600"><text x="95" y="40" text-anchor="middle">Block n-1</text><text x="320" y="40" text-anchor="middle">Block n</text><text x="545" y="40" text-anchor="middle">Block n+1</text></g>
   <g fill="#333">
     <text x="22" y="62">Hash of block n-2</text><text x="22" y="80">Merkle root</text><text x="22" y="98">Time, target, nonce</text><text x="22" y="122" fill="#666">Transactions…</text>
     <text x="247" y="62">Hash of block n-1</text><text x="247" y="80">Merkle root</text><text x="247" y="98">Time, target, nonce</text><text x="247" y="122" fill="#666">Transactions…</text>
     <text x="472" y="62">Hash of block n</text><text x="472" y="80">Merkle root</text><text x="472" y="98">Time, target, nonce</text><text x="472" y="122" fill="#666">Transactions…</text>
   </g>
-  <path d="M180,82 C205,82 205,58 235,58" fill="none" stroke="#1f3a5f" stroke-width="1.4" marker-end="url(#a)"/>
-  <path d="M405,82 C430,82 430,58 460,58" fill="none" stroke="#1f3a5f" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M180,82 C205,82 205,58 235,58" fill="none" stroke="#002654" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M405,82 C430,82 430,58 460,58" fill="none" stroke="#002654" stroke-width="1.4" marker-end="url(#a)"/>
 </svg>
 <p class="caption">Figure 1. Each header contains the hash of the previous block: changing an old block changes every hash after it.</p>
 </div>

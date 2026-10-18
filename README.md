@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo-256.png" width="160" alt="Logo NumFranc"></p>
+
 # NumFranc (NFR)
 
 *English: NumFranc is a learning-project cryptocurrency written in Rust, with post-quantum ML-DSA-87 signatures, memory-hard Argon2d proof of work, a fixed 69.1 M cap and a single program (node + miner + wallet + GUI). It is **unaudited** and has **no real value**: do not use it with real money. Built by a student with the help of Claude (Anthropic). Licence: MIT.*
