@@ -20,6 +20,7 @@
   header img { width: 120px; height: 120px; }
   header h1 { font-size: 2.6rem; margin: 12px 0 4px; letter-spacing: .5px; }
   header p { margin: 0 auto; max-width: 640px; color: #c9d3ea; font-size: 1.15rem; }
+  .bouton.secondaire { background: transparent; color: #fff; border: 2px solid var(--or); margin-left: 8px; }
   .bouton { display: inline-block; margin-top: 24px; background: var(--or); color: var(--nuit); font-weight: 700; padding: 12px 26px; border-radius: 8px; text-decoration: none; }
   main { max-width: 980px; margin: 0 auto; padding: 32px 16px 48px; }
   h2 { font-size: 1.6rem; margin: 40px 0 12px; }
@@ -34,7 +35,7 @@
   ol li { margin-bottom: 6px; }
   .avertissement { border-left: 4px solid var(--or); background: var(--carte); padding: 14px 18px; border-radius: 6px; color: var(--doux); }
   footer { text-align: center; color: var(--doux); padding: 24px 16px 40px; font-size: .9rem; }
-  code { background: var(--carte); border: 1px solid var(--bord); border-radius: 4px; padding: 1px 6px; }
+  code { background: var(--carte); border: 1px solid var(--bord); border-radius: 4px; padding: 1px 6px; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -42,7 +43,8 @@
   <img src="logo-256.png" alt="Logo NumFranc : un N tracé sur un treillis de points">
   <h1>NumFranc</h1>
   <p>La monnaie numérique pensée pour l'après-ordinateur quantique, minée par des ordinateurs ordinaires.</p>
-  <a class="bouton" href="#telecharger">Télécharger</a>
+  <a class="bouton" href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest">Télécharger</a>
+  <a class="bouton secondaire" href="LIVRE_BLANC.pdf">Livre blanc</a>
 </header>
 
 <main>
@@ -74,17 +76,20 @@
 
   <h2 id="telecharger">Télécharger et commencer</h2>
   <ol>
-    <li>Téléchargez NumFranc pour votre système (Mac, Windows ou Linux).</li>
-    <li>Vérifiez l'empreinte du fichier avec <code>SHA3SUMS.txt</code> (SHA3-512).</li>
+    <li>Téléchargez <code>NumFranc.zip</code> sur la <a href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest">page des versions</a> (Mac, Windows ou Linux).</li>
+    <li>Vérifiez les fichiers avec <code>SHA3SUMS.txt</code> (SHA3-512), puis la signature <code>SHA3SUMS.txt.sig</code> (SLH-DSA) avec la clé publique&nbsp;: <code>5e1d1c80fdd07d3bc4095f45a05649fc006bce347609b1566b3c25e940881736</code></li>
     <li>Lancez-le : une fenêtre s'ouvre et vous guide.</li>
     <li>Choisissez vos deux mots de passe et recopiez les 3 morceaux de votre code de secours sur papier.</li>
     <li>Votre ordinateur rejoint le réseau et commence à miner.</li>
   </ol>
-  <p class="avertissement">Les versions prêtes à l'emploi arrivent bientôt. NumFranc est un projet d'apprentissage <strong>non audité</strong> : ne l'utilisez pas pour de l'argent réel.</p>
+  <h2>Livre blanc</h2>
+  <p>Tout le fonctionnement de NumFranc, avec les annexes techniques&nbsp;: <a href="LIVRE_BLANC.pdf">en français</a> · <a href="WHITEPAPER.pdf">in English</a>.</p>
+
+  <p class="avertissement">Le code de NumFranc n'a pas encore fait l'objet d'un audit de sécurité indépendant. Aucune vente de NFR n'est proposée et aucune valeur n'est promise.</p>
 </main>
 
 <footer>
-  NumFranc — code ouvert et vérifiable par tous. Le nom et le logo ne sont liés à aucun État ni à aucune banque.
+  NumFranc — code ouvert et vérifiable par tous sur <a href="https://github.com/ShadowRook-crypto/NumFranc">GitHub</a>. Le nom et le logo ne sont liés à aucun État ni à aucune banque.
 </footer>
 </body>
 </html>
