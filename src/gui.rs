@@ -37,6 +37,11 @@ pub fn run(opts: Options) -> Result<(), String> {
     crate::i18n::set_english(settings.english);
     #[cfg(target_os = "macos")]
     crate::mac_liens::installer(opts.data_dir.clone());
+    // Premier lancement : rangement dans le menu des applications + liens nfr:, sans rien demander.
+    {
+        let dir = opts.data_dir.clone();
+        std::thread::spawn(move || crate::install::premier_lancement(&dir));
+    }
     let icon = egui::IconData { rgba: crate::install::ICON_RGBA_64.to_vec(), width: 64, height: 64 };
     let native = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -51,6 +56,15 @@ pub fn run(opts: Options) -> Result<(), String> {
         "NumFranc",
         native,
         Box::new(move |cc| {
+            // Windows : la fenêtre s'est ouverte, on enlève la fenêtre noire (console) qui était derrière.
+            // Si la fenêtre n'avait pas pu s'ouvrir, la console serait restée pour le mode texte.
+            #[cfg(windows)]
+            {
+                unsafe extern "system" {
+                    fn FreeConsole() -> i32;
+                }
+                unsafe { FreeConsole() };
+            }
             apply_style(&cc.egui_ctx, &settings);
             if std::env::args().any(|a| a == "--reduit") {
                 cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
@@ -71,6 +85,26 @@ struct Pal {
     grey: Color32,
     card: Color32,
     toast: Color32,
+}
+
+/// Ligne d'état de l'ouverture du port ; avec `detail`, l'explication complète (pourquoi, quoi faire).
+fn port_lines(ui: &mut egui::Ui, p: &Pal, etat: &Option<crate::portmap::PortState>, detail: bool) {
+    let Some(etat) = etat else { return };
+    let couleur = match etat.niveau() {
+        1 => p.green,
+        2 => p.red,
+        _ => p.grey,
+    };
+    ui.label(RichText::new(etat.titre()).color(couleur));
+    let texte = etat.explication();
+    if texte.is_empty() {
+        return;
+    }
+    if detail {
+        ui.label(RichText::new(texte).small().color(p.grey));
+    } else {
+        ui.label(RichText::new(t("Détails : Réglages > Connexion.", "Details: Settings > Connection.")).small().color(p.grey));
+    }
 }
 
 fn palette(s: &Settings) -> Pal {
@@ -300,11 +334,14 @@ struct App {
     /// Vérification des mises à jour en cours (réponse attendue du fil de travail) et dernier résultat.
     maj_attente: Option<std::sync::mpsc::Receiver<Result<crate::maj::Resultat, String>>>,
     maj: Option<Result<crate::maj::Resultat, String>>,
+    /// Écran « Bienvenue » à montrer (jusqu'à ce qu'il soit fermé une fois).
+    bienvenue: bool,
 }
 
 impl App {
     fn new(opts: Options, settings: Settings) -> Self {
         let path = opts.data_dir.join("wallet.dat");
+        let opts_dir = opts.data_dir.clone();
         let _ = std::fs::create_dir_all(&opts.data_dir);
         let start = match file_status(&path) {
             WalletFile::Missing => Start::Choice,
@@ -357,6 +394,7 @@ impl App {
             plus: Default::default(),
             maj_attente: None,
             maj: None,
+            bienvenue: crate::install::bienvenue_a_montrer(&opts_dir),
             opts,
         }
     }
@@ -1052,6 +1090,37 @@ impl App {
                 }
             });
         });
+        if self.bienvenue {
+            let mut fermer = false;
+            egui::Window::new(t("Quelques mots avant de commencer", "A few words before you start"))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.set_max_width(460.0);
+                    for (fr, en) in [
+                        ("Ton minage est déjà en route. Laisse NumFranc ouvert : une récompense devient dépensable après 100 blocs.",
+                         "Mining is already running. Keep NumFranc open: a reward becomes spendable after 100 blocks."),
+                        ("NumFranc ouvre tout seul le port sur ta box et cherche les autres nœuds. L'état est dans Réglages > Connexion.",
+                         "NumFranc opens the port on your router by itself and looks for other nodes. Status: Settings > Connection."),
+                        ("Les liens de paiement nfr:… s'ouvrent dans NumFranc, déjà rempli. Rien ne part sans ton code de dépense.",
+                         "nfr:… payment links open in NumFranc, already filled in. Nothing is sent without your spending code."),
+                        ("Garde tes 3 morceaux de secours sur 3 papiers séparés : 2 sur 3 suffisent pour tout récupérer.",
+                         "Keep your 3 recovery pieces on 3 separate papers: any 2 of 3 recover everything."),
+                    ] {
+                        ui.label(t(fr, en));
+                        ui.add_space(6.0);
+                    }
+                    ui.add_space(4.0);
+                    if ui.button(t("J'ai compris", "Got it")).clicked() {
+                        fermer = true;
+                    }
+                });
+            if fermer {
+                self.bienvenue = false;
+                crate::install::bienvenue_vue(&self.opts.data_dir);
+            }
+        }
         if !self.toasts.is_empty() {
             egui::Area::new(egui::Id::unique("notifications")).anchor(egui::Align2::RIGHT_BOTTOM, [-14.0, -44.0]).show(ctx, |ui| {
                 for (_, msg) in &self.toasts {
@@ -1086,6 +1155,7 @@ impl App {
     }
 
     fn home_tab(&mut self, ui: &mut egui::Ui) {
+        let port = self.node.as_ref().map(|n| n.port_state());
         let p = self.pal();
         let node = self.node.clone().unwrap();
         let s = &self.snap;
@@ -1139,6 +1209,7 @@ impl App {
                 ui.label(tf!("Bloc actuel : #{}  ({}…)", "Current block: #{}  ({}…)", s.height, s.tip));
                 ui.label(tf!("NFR émis : {} sur 69 100 000", "NFR issued: {} out of 69,100,000", format_amount(total_before(s.height + 1))));
                 ui.label(tf!("Pairs connectés : {}", "Connected peers: {}", s.pairs));
+                port_lines(ui, &p, &port, false);
             });
         });
         self.chart_card(ui);
@@ -1258,7 +1329,7 @@ impl App {
                 if let Ok(req) = crate::wallet_plus::parse_payment_uri(&self.send.to) {
                     self.send.to = req.recipient;
                     if let Some(a) = req.amount {
-                        self.send.amount = format_amount(a);
+                        self.send.amount = crate::wallet::format_amount_plain(a);
                     }
                     if !req.message.is_empty() {
                         self.send.memo = req.message;
@@ -1672,6 +1743,7 @@ impl App {
         card(ui, &p, |ui| {
             ui.label(RichText::new(t("Réseau", "Network")).strong());
             ui.label(tf!("Port local : {}", "Local port: {}", node.opts.port));
+            port_lines(ui, &p, &Some(node.port_state()), true);
             ui.label(tf!("Bloc actuel : #{}  ({}…)", "Current block: #{}  ({}…)", self.snap.height, self.snap.tip));
             ui.label(t("Les autres nœuds sont trouvés automatiquement : réseau local, puis annuaire mondial.", "Other nodes are found automatically: local network, then world directory."));
             ui.label(RichText::new(tf!(
@@ -1734,7 +1806,7 @@ impl App {
                 if ui.add_enabled(!self.sec_code.is_empty() && self.job.is_none(), egui::Button::new(t("Afficher les 3 morceaux", "Show the 3 pieces"))).clicked() {
                     let n = node.clone();
                     let code = Zeroizing::new(std::mem::take(&mut self.sec_code));
-                    self.spawn(t("Ouverture du coffre…", "Opening the vault…"), ctx, move || match n.wallet.lock().unwrap().recovery_shares(&code) {
+                    self.spawn(t("Ouverture du coffre…", "Opening the vault…"), ctx, move || match n.recovery_shares(&code) {
                         Ok(s) => JobResult::Shares(s),
                         Err(e) => JobResult::Err(e),
                     });
@@ -1751,7 +1823,7 @@ impl App {
                 let n = node.clone();
                 let old = Zeroizing::new(self.chg_old.clone());
                 let (o, s) = (Zeroizing::new(self.chg.open1.clone()), Zeroizing::new(self.chg.spend1.clone()));
-                self.spawn(t("Rechiffrement du portefeuille…", "Re-encrypting the wallet…"), ctx, move || match n.wallet.lock().unwrap().change_passwords(&old, &o, &s) {
+                self.spawn(t("Rechiffrement du portefeuille…", "Re-encrypting the wallet…"), ctx, move || match n.change_passwords(&old, &o, &s) {
                     Ok(()) => JobResult::Info(t("mots de passe changés", "passwords changed").into()),
                     Err(e) => JobResult::Err(e),
                 });
@@ -1760,6 +1832,7 @@ impl App {
     }
 
     fn settings_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let port = self.node.as_ref().map(|n| n.port_state());
         let p = self.pal();
         let mut changed = false;
         card(ui, &p, |ui| {
@@ -1813,6 +1886,12 @@ impl App {
                 changed |= ui.add(egui::Slider::new(&mut self.settings.cores_day, 0..=cores).text(t("cœurs le jour (0 = arrêt)", "cores during the day (0 = off)"))).changed();
             });
         });
+        if port.is_some() {
+            card(ui, &p, |ui| {
+                ui.label(RichText::new(t("Connexion", "Connection")).strong());
+                port_lines(ui, &p, &port, true);
+            });
+        }
         card(ui, &p, |ui| {
             ui.label(RichText::new(t("Mises à jour", "Updates")).strong());
             ui.label(tf!(
@@ -1843,7 +1922,7 @@ impl App {
             }
             match &self.maj {
                 Some(Ok(crate::maj::Resultat::Nouvelle(v))) => {
-                    ui.colored_label(p.green, tf!("Version {v} disponible — signature de l'auteur vérifiée ✔", "Version {v} available — author's signature verified ✔"));
+                    ui.colored_label(p.green, tf!("Version {v} disponible — signature de l'auteur vérifiée", "Version {v} available — author's signature verified"));
                     if ui.button(t("Ouvrir la page de téléchargement", "Open the download page")).clicked() {
                         crate::maj::ouvrir_page();
                     }
@@ -1888,6 +1967,14 @@ impl App {
             error_line(ui, &p, &self.error);
             info_line(ui, &p, &self.info);
         });
+        ui.label(
+            RichText::new(t(
+                "NumFranc — licence MIT, sans garantie. Aucun lien avec FrancNum.",
+                "NumFranc — MIT licence, no warranty. No connection with FrancNum.",
+            ))
+            .small()
+            .color(p.grey),
+        );
         if changed {
             if !self.settings.schedule {
                 self.schedule_night = None;
@@ -1937,11 +2024,17 @@ fn draw_logo(painter: &egui::Painter, r: egui::Rect) {
 
 /// Prépare, signe et diffuse un paiement. Renvoie les frais.
 pub fn pay(node: &Arc<Node>, to: Address, amount: u64, opts: &PaymentOptions, code: &str) -> Result<u64, String> {
-    let tx: Transaction = {
+    // Le long calcul du code de dépense (Argon2) se fait AVANT de verrouiller quoi que ce soit.
+    node.prepare_spend(code)?;
+    let tx: Result<Transaction, String> = {
         let c = node.chain.lock().unwrap();
         let mp = node.mempool.lock().unwrap();
-        node.wallet.lock().unwrap().create_payment(&c, &mp, to, amount, opts, Some(code))?
+        let mut w = node.wallet.lock().unwrap();
+        let r = w.create_payment(&c, &mp, to, amount, opts, Some(code));
+        w.clear_pre_seed();
+        r
     };
+    let tx = tx?;
     let fee = {
         let c = node.chain.lock().unwrap();
         let ins: u64 = tx.inputs.iter().filter_map(|i| c.utxo.get(&i.prev)).map(|u| u.amount).sum();

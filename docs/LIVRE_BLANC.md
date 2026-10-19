@@ -2,7 +2,7 @@
 title: NumFranc (NFR)
 subtitle: Une monnaie numérique pair-à-pair conçue dès son origine pour résister aux ordinateurs quantiques
 kind: Livre blanc
-version: Version 1.0 — octobre 2026
+version: Version 1.1 — octobre 2026
 author: ShadowRook
 ---
 
@@ -330,14 +330,14 @@ NumFranc ne dépend d'aucun serveur. Un nœud trouve ses pairs de quatre façons
 
 1. **Sur le réseau local** : une annonce UDP toutes les 10 secondes sur le port 6910.
 2. **Par l'annuaire décentralisé de BitTorrent** (DHT « Mainline », utilisé par des millions d'ordinateurs) : chaque nœud s'inscrit sous un identifiant propre à NumFranc, dérivé de SHA3-512 et de l'empreinte du genesis, puis cherche les autres inscrits. La recherche a lieu toutes les minutes au démarrage, puis toutes les 10 minutes.
-3. **Par l'ouverture automatique du port** sur la box internet (UPnP), pour être joignable de l'extérieur.
+3. **Par l'ouverture automatique du port** sur la box internet (UPnP, puis NAT-PMP si l'UPnP ne répond pas), pour être joignable de l'extérieur. La demande est renouvelée toutes les 10 minutes et répétée toutes les 5 minutes tant qu'elle échoue ; si le programme s'arrête, la box referme le port d'elle-même en moins de 20 minutes. L'état (ouvert, ou pourquoi pas et quoi faire) s'affiche sur l'accueil et dans Réglages > Connexion. Sans port ouvert, le nœud fonctionne quand même : il se connecte aux autres, mais les autres ne peuvent pas se connecter à lui en premier.
 4. **Par la mémoire des pairs** déjà rencontrés, enregistrés dans le fichier `peers.txt`.
 
 Au démarrage, un nœud attend 20 secondes de synchronisation avant de commencer à miner, pour ne pas travailler sur une chaîne en retard. Il demande les blocs manquants par lots de 500 au plus.
 
 ### 8.3 La file des transactions
 
-Les transactions valides mais pas encore incluses dans un bloc attendent dans une file de 64 Mio au plus. Un seul enregistrement de pseudo à la fois peut y viser un même nom : cela évite qu'un mineur produise un bloc contenant deux enregistrements contradictoires.
+Les transactions valides mais pas encore incluses dans un bloc attendent dans une file de 64 Mio au plus. Un seul enregistrement de pseudo à la fois peut y viser un même nom : cela évite qu'un mineur produise un bloc contenant deux enregistrements contradictoires. Quand la file est pleine, comme dans Bitcoin, une transaction qui paie plus de frais par octet prend la place des moins chères au lieu d'être refusée.
 
 ### 8.4 Protections contre les abus
 
@@ -347,6 +347,9 @@ Un réseau ouvert reçoit forcément des messages de pairs malveillants. Depuis 
 - **Blocs envoyés un par un** : en réponse à une demande, les blocs sont lus et envoyés un à un, dans la limite de 500 blocs ou 32 Mio. Les demandes trop rapprochées sont ignorées et un pair trop insistant est déconnecté.
 - **Vérifications de la moins chère à la plus chère** : une transaction relayée ne doit pas dépasser 2 Mio ; on vérifie ensuite que les pièces dépensées existent, et seulement à la fin les signatures, hors des verrous. Une signature fausse vaut l'exclusion du pair pendant 24 heures.
 - **Annuaire des pairs à deux listes**, sur le modèle d'*addrman* de Bitcoin : les adresses déjà testées et les nouvelles. Les adresses sont rangées par quartier d'Internet (les deux premiers nombres de l'adresse IPv4) : au plus 8 nouvelles et 4 testées par quartier, au plus 64 apportées par un même pair, et un remplacement au hasard quand une liste est pleine. Les adresses privées (box, réseau local) venant d'Internet sont refusées : les ordinateurs de la maison se trouvent par la découverte locale. Un nœud ouvre au plus une connexion sortante par quartier et accepte au plus 4 connexions entrantes d'un même quartier. Un pair ne peut envoyer qu'une adresse toutes les 10 secondes, en plus de la réponse à notre propre demande.
+- **Les pairs honnêtes ne sont pas punis** (version 1.1) : un bloc daté de plus de 2 heures dans le futur selon notre horloge est ignoré sans exclure son envoyeur (l'horloge de l'un ou l'autre ordinateur peut être décalée), et le programme invite à vérifier l'heure. Un bloc déjà rejeté, ou construit sur un bloc rejeté, fait seulement couper la connexion, sans exclusion de 24 heures. Plus de 20 blocs orphelins (parent inconnu) par minute venant d'un même pair font aussi couper la connexion.
+- **Un pair lent ne retarde personne** : blocs et transactions sont envoyés à chaque pair en parallèle, si bien qu'une connexion surchargée ne bloque plus les autres.
+- **Pas de gel pendant une dépense** : le gros calcul du code de dépense (Argon2, plusieurs secondes) est fait avant de prendre le moindre verrou, si bien que la chaîne, le minage et la fenêtre continuent de tourner pendant la préparation d'un paiement.
 
 ## 9. Portefeuille
 
@@ -392,7 +395,7 @@ L'utilisateur peut fixer un seuil. Au-dessus, chaque paiement est envoyé comme 
 
 ## 10. Application et distribution
 
-NumFranc est **un seul programme**. Un double-clic ouvre une fenêtre qui crée ou ouvre le portefeuille, puis lance le nœud et le minage. La fenêtre montre l'essentiel : Accueil, Envoyer, Recevoir, Historique, Carnet et Réglages, plus Sécurité et Explications dans un menu « Plus ». Le **mode expert** (dans les Réglages) ajoute Explorateur, Émission, Avancé et Réseau. L'interface existe en **français et en anglais**, en thème clair ou sombre. Une commande ajoute NumFranc au menu des applications, sans rien installer en dehors du dossier personnel.
+NumFranc est **un seul programme**. Un double-clic ouvre une fenêtre qui crée ou ouvre le portefeuille, puis lance le nœud et le minage. La fenêtre montre l'essentiel : Accueil, Envoyer, Recevoir, Historique, Carnet et Réglages, plus Sécurité et Explications dans un menu « Plus ». Le **mode expert** (dans les Réglages) ajoute Explorateur, Émission, Avancé et Réseau. L'interface existe en **français et en anglais**, en thème clair ou sombre. Au premier lancement, le programme se range tout seul dans le menu des applications et enregistre les liens de paiement `nfr:`, uniquement dans le dossier personnel de l'utilisateur. Depuis la version 1.1, il est distribué par des **installeurs « double-clic »** : un disque `.dmg` pour le Mac (on glisse NumFranc vers Applications), un installeur `.exe` pour Windows (sans droits d'administrateur ; la désinstallation ne touche jamais au portefeuille) et des paquets `.deb` pour Linux (amd64 et arm64). Ils ne sont pas signés par Apple ni Microsoft, ce qui demande des comptes payants liés à une identité réelle : la première ouverture affiche donc un avertissement, expliqué sur la page de téléchargement. Les empreintes des installeurs figurent dans le même fichier signé `SHA3SUMS.txt` : la signature des versions les couvre aussi.
 
 Le logiciel est écrit en **Rust**, un langage qui empêche par construction des familles entières d'erreurs mémoire. Il est publié sous **licence MIT** sur GitHub. À chaque version, un service d'intégration continue exécute la suite de tests, puis compile le programme pour cinq plateformes : Linux x86-64, Linux ARM64, macOS Apple Silicon, macOS Intel et Windows x86-64. Il produit aussi l'archive `NumFranc.zip` et le fichier d'empreintes `SHA3SUMS.txt`. La compilation est **reproductible** : la version de Rust, les dépendances et les chemins sont fixés, si bien que deux compilations du même code donnent exactement le même programme. Le service le vérifie en compilant deux fois la version Linux ; chacun peut refaire l'essai avec `scripts/build-reproductible.sh`.
 

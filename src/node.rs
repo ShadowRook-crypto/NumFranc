@@ -6,6 +6,7 @@ use crate::chain::{Added, Chain, ChainError};
 use crate::config::*;
 use crate::emission::{block_reward, total_before};
 use crate::mempool::Mempool;
+use crate::portmap::{self, PortState};
 use crate::p2p::{read_message, write_message, Message};
 use crate::tx::{Transaction, TxOut};
 use crate::wallet::{format_amount, Wallet};
@@ -53,6 +54,9 @@ struct Peer {
     /// Transactions refusées récemment (au-delà de la limite, le pair est déconnecté).
     rejects: u32,
     rejects_since: Instant,
+    /// Blocs orphelins reçus depuis `orphans_since` (limités par minute).
+    orphans: u32,
+    orphans_since: Instant,
 }
 
 impl Peer {
@@ -74,6 +78,8 @@ impl Peer {
             addr_answered: false,
             rejects: 0,
             rejects_since: Instant::now(),
+            orphans: 0,
+            orphans_since: Instant::now(),
         }
     }
 
@@ -92,6 +98,8 @@ fn proven_ahead(announced: u64, last_valid: Option<Instant>, ours: u64) -> bool 
 const MAX_INBOUND_PER_GROUP: usize = 4;
 /// Au-delà de 100 transactions refusées en 10 minutes, le pair est déconnecté.
 const MAX_REJECTS: u32 = 100;
+/// Au-delà de 20 blocs orphelins (parent inconnu) en une minute, le pair est déconnecté (sans être exclu).
+const MAX_ORPHANS_PER_MIN: u32 = 20;
 /// Au-delà de 60 demandes de blocs trop rapprochées, le pair est déconnecté.
 const MAX_EXCESS_GETBLOCKS: u32 = 60;
 
@@ -124,6 +132,8 @@ pub struct Node {
     reachable: AtomicBool,
     /// Adresse publique de la box (pour ne pas se compter soi-même dans l'annuaire).
     public_ip: Mutex<Option<IpAddr>>,
+    /// État de l'ouverture du port, affiché à l'utilisateur.
+    port_state: Mutex<PortState>,
 }
 
 /// 8 premiers octets du hash du genesis : seuls les nœuds du même réseau se répondent.
@@ -142,40 +152,70 @@ fn discovery_socket() -> std::io::Result<std::net::UdpSocket> {
     Ok(s.into())
 }
 
-/// Ouvre le port TCP `port` sur la box via UPnP. Renvoie l'adresse publique de la box.
-/// Si le port voulu est déjà pris sur la box (autre PC de la maison), un port libre est demandé.
+/// Pourquoi l'ouverture a échoué : pas de box, ou box qui refuse.
+enum EchecPort {
+    PasDeBox,
+    Refus,
+}
+
+/// Durée de la réservation sur la box. Elle est renouvelée avant la fin ; si NumFranc se ferme
+/// ou plante, la box referme donc le port d'elle-même en moins de 20 minutes.
+const BAIL_PORT_S: u32 = 1_200;
+/// Délai entre deux renouvellements (port ouvert) ou deux nouveaux essais (échec).
+const RENOUVELLEMENT_S: u64 = 600;
+const REESSAI_S: u64 = 300;
+
+/// Ports essayés, dans l'ordre : le port voulu, puis un port dans chaque quart de la plage
+/// (les IPv4 partagées, comme chez Free, n'autorisent qu'une partie des ports).
+fn ports_candidats(port: u16, previous: Option<u16>) -> Vec<u16> {
+    let mut c: Vec<u16> = previous.into_iter().collect();
+    c.extend([port, port.wrapping_add(1), 26_910, 36_910, 56_910, 16_910, 46_910]);
+    c.dedup();
+    c
+}
+
+/// Ouvre le port TCP `port` sur la box via UPnP.
 /// Renvoie (adresse publique de la box, port public obtenu).
-fn open_port_upnp(port: u16, previous: Option<u16>) -> Result<(IpAddr, u16), String> {
+fn open_port_upnp(port: u16, previous: Option<u16>) -> Result<(IpAddr, u16), EchecPort> {
     use igd_next::{search_gateway, PortMappingProtocol, SearchOptions};
     let mut opts = SearchOptions::default();
     opts.timeout = Some(Duration::from_secs(5));
-    let gw = search_gateway(opts)
-        .map_err(|_| "aucune box compatible UPnP trouvée".to_string())?;
-    let probe = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
-    probe.connect(gw.addr).map_err(|e| e.to_string())?;
-    let local_ip = probe.local_addr().map_err(|e| e.to_string())?.ip();
+    let gw = search_gateway(opts).map_err(|_| EchecPort::PasDeBox)?;
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|_| EchecPort::PasDeBox)?;
+    probe.connect(gw.addr).map_err(|_| EchecPort::PasDeBox)?;
+    let local_ip = probe.local_addr().map_err(|_| EchecPort::PasDeBox)?.ip();
     let local = SocketAddr::new(local_ip, port);
-    // Port déjà obtenu, puis le port normal, puis un port dans chaque quart de la plage
-    // (les IPv4 partagées, comme chez Free, n'autorisent qu'une partie des ports).
-    let mut candidates: Vec<u16> = previous.into_iter().collect();
-    candidates.extend([port, port.wrapping_add(1), 26_910, 36_910, 56_910, 16_910, 46_910]);
     let mut public_port = None;
-    for c in candidates {
-        if gw.add_port(PortMappingProtocol::TCP, c, local, 3_600, "NumFranc").is_ok() {
+    for c in ports_candidats(port, previous) {
+        if gw.add_port(PortMappingProtocol::TCP, c, local, BAIL_PORT_S, "NumFranc").is_ok() {
             public_port = Some(c);
             break;
         }
     }
     let public_port = match public_port {
         Some(p) => p,
-        None => gw.add_any_port(PortMappingProtocol::TCP, local, 3_600, "NumFranc").map_err(|_| {
-            "la box refuse tous les ports essayés (IPv4 partagée ou UPnP limité ; \
-             chez Free, demandez l'IPv4 fixe full-stack dans l'Espace Abonné)"
-                .to_string()
-        })?,
+        None => gw
+            .add_any_port(PortMappingProtocol::TCP, local, BAIL_PORT_S, "NumFranc")
+            .map_err(|_| EchecPort::Refus)?,
     };
-    let ip = gw.get_external_ip().map_err(|e| e.to_string())?;
+    let ip = gw.get_external_ip().map_err(|_| EchecPort::Refus)?;
     Ok((ip, public_port))
+}
+
+/// Même chose en NAT-PMP, quand l'UPnP ne répond pas.
+fn open_port_natpmp(port: u16, previous: Option<u16>) -> Result<(IpAddr, u16), EchecPort> {
+    let gw = portmap::passerelle_par_defaut().ok_or(EchecPort::PasDeBox)?;
+    let addr = SocketAddr::new(IpAddr::V4(gw), portmap::NATPMP_PORT);
+    let mut refus = false;
+    for c in ports_candidats(port, previous) {
+        match portmap::natpmp_ouvrir(addr, port, c, BAIL_PORT_S) {
+            Ok((ip, p)) => return Ok((IpAddr::V4(ip), p)),
+            // Pas de réponse du tout : inutile d'insister avec d'autres ports.
+            Err(e) if e == "pas de réponse" => return Err(if refus { EchecPort::Refus } else { EchecPort::PasDeBox }),
+            Err(_) => refus = true,
+        }
+    }
+    Err(EchecPort::Refus)
 }
 
 fn log(msg: &str) {
@@ -215,6 +255,7 @@ impl Node {
             public_port: AtomicU16::new(opts.port),
             reachable: AtomicBool::new(false),
             public_ip: Mutex::new(None),
+            port_state: Mutex::new(PortState::Searching),
         });
 
         let listener = TcpListener::bind(("0.0.0.0", opts.port))
@@ -410,8 +451,20 @@ impl Node {
             .filter(|(id, _)| Some(**id) != except)
             .map(|(_, p)| p.writer.clone())
             .collect();
+        // Un fil par pair : un pair lent (réseau saturé, connexion à moitié morte) ne retarde plus les autres.
+        // L'envoi à un pair garde de toute façon sa limite de 30 s (set_write_timeout).
+        if writers.len() <= 1 {
+            for w in writers {
+                let _ = write_message(&mut *w.lock().unwrap(), msg);
+            }
+            return;
+        }
+        let msg = Arc::new(msg.clone());
         for w in writers {
-            let _ = write_message(&mut *w.lock().unwrap(), msg);
+            let msg = msg.clone();
+            let _ = std::thread::Builder::new().name("diffusion".into()).spawn(move || {
+                let _ = write_message(&mut *w.lock().unwrap(), &msg);
+            });
         }
     }
 
@@ -678,7 +731,27 @@ impl Node {
             Ok(Added::SideChain) | Err(ChainError::AlreadyKnown) => {}
             Err(ChainError::Orphan) => {
                 if let Some(id) = from {
-                    self.request_blocks(id);
+                    // Au plus MAX_ORPHANS_PER_MIN blocs orphelins par minute et par pair : au-delà, on coupe
+                    // (sinon un pair pourrait nous faire redemander la chaîne en boucle).
+                    let abusif = {
+                        let mut peers = self.peers.lock().unwrap();
+                        match peers.get_mut(&id) {
+                            Some(p) => {
+                                if p.orphans_since.elapsed() > Duration::from_secs(60) {
+                                    p.orphans = 0;
+                                    p.orphans_since = Instant::now();
+                                }
+                                p.orphans += 1;
+                                p.orphans > MAX_ORPHANS_PER_MIN
+                            }
+                            None => false,
+                        }
+                    };
+                    if abusif {
+                        self.disconnect(id, "trop de blocs orphelins");
+                    } else {
+                        self.request_blocks(id);
+                    }
                 }
             }
             Err(ChainError::ReorgTooDeep { depth }) => {
@@ -687,11 +760,56 @@ impl Node {
                     "[!] Competing chain REJECTED: it would rewrite {depth} blocks (max {MAX_REORG_DEPTH}). Possible attack."
                 ));
             }
+            Err(ChainError::FutureTime) => {
+                // Pas de punition : l'horloge de l'un des deux ordinateurs est peut-être décalée.
+                let mut last = self.last_log.lock().unwrap();
+                if last.elapsed() > Duration::from_secs(60) {
+                    *last = Instant::now();
+                    log(&crate::tf!(
+                        "[i] Bloc daté de plus de 2 h dans le futur ignoré : vérifie l'heure de ton ordinateur (réglage automatique conseillé).",
+                        "[i] Block dated more than 2 h in the future ignored: check your computer's clock (automatic time setting recommended)."
+                    ));
+                }
+            }
+            Err(ChainError::KnownBad(e)) => {
+                if let Some(id) = from {
+                    // Le pair ne sait peut-être pas encore que ce bloc est faux : on coupe, sans l'exclure 24 h.
+                    self.disconnect(id, &e);
+                }
+            }
             Err(ChainError::Invalid(e)) => match from {
                 Some(id) => self.ban(id, &format!("bloc invalide : {e}")),
                 None => log(&crate::tf!("[!] Bloc miné refusé : {e}", "[!] Mined block rejected: {e}")),
             },
         }
+    }
+
+    /// Ouvre le coffre avec le code de dépense SANS tenir aucun verrou (l'Argon2 dure plusieurs secondes :
+    /// pendant ce temps, la chaîne, le minage et la fenêtre continuent de fonctionner). L'opération qui suit
+    /// reprend la graine déjà ouverte ; l'appelant doit ensuite appeler `clear_spend`.
+    pub fn prepare_spend(&self, code: &str) -> Result<(), String> {
+        let snap = self.wallet.lock().unwrap().spend_snapshot();
+        let seed = snap.open(code)?;
+        self.wallet.lock().unwrap().set_pre_seed(seed);
+        Ok(())
+    }
+
+    pub fn clear_spend(&self) {
+        self.wallet.lock().unwrap().clear_pre_seed();
+    }
+
+    /// Change les mots de passe : le long calcul Argon2 se fait hors verrou, seule l'écriture du fichier est verrouillée.
+    pub fn change_passwords(&self, old_spend: &str, new_open: &str, new_spend: &str) -> Result<(), String> {
+        let snap = self.wallet.lock().unwrap().spend_snapshot();
+        let plan = snap.prepare_change(old_spend, new_open, new_spend)?;
+        self.wallet.lock().unwrap().apply_change(plan)
+    }
+
+    /// Les 3 morceaux de secours, sans verrou pendant l'Argon2.
+    pub fn recovery_shares(&self, code: &str) -> Result<[String; 3], String> {
+        let snap = self.wallet.lock().unwrap().spend_snapshot();
+        let seed = snap.open(code)?;
+        crate::vault::split_seed(&*seed)
     }
 
     pub fn submit_tx(&self, tx: Transaction) -> Result<(), String> {
@@ -852,40 +970,59 @@ impl Node {
 
     // ---------- Ouverture automatique du port sur la box (UPnP) ----------
 
-    /// Demande à la box d'ouvrir le port réseau vers ce PC, puis renouvelle
-    /// la demande toutes les 30 minutes. Ainsi chaque mineur devient joignable
-    /// depuis Internet, sans réglage et sans PC central.
+    /// Demande à la box d'ouvrir le port réseau vers ce PC (UPnP, puis NAT-PMP), renouvelle la
+    /// demande toutes les 10 minutes, et réessaie toutes les 5 minutes tant que ça échoue
+    /// (box rallumée, UPnP activé entre-temps...). Chaque mineur devient ainsi joignable depuis
+    /// Internet, sans réglage et sans PC central.
     fn upnp_loop(self: Arc<Self>) {
-        let mut first = true;
         let mut external: Option<u16> = None;
         loop {
-            match open_port_upnp(self.opts.port, external) {
-                Ok((ext, port)) if first => {
+            let essai = open_port_upnp(self.opts.port, external).map(|(ip, p)| (ip, p, "UPnP")).or_else(|e1| {
+                match open_port_natpmp(self.opts.port, external) {
+                    Ok((ip, p)) => Ok((ip, p, "NAT-PMP")),
+                    // Si l'UPnP a répondu par un refus, c'est lui qui explique l'échec.
+                    Err(e2) => Err(if matches!(e1, EchecPort::Refus) { EchecPort::Refus } else { e2 }),
+                }
+            });
+            let nouvel_etat = match essai {
+                Ok((ext, port, via)) => {
                     external = Some(port);
                     self.public_port.store(port, Ordering::SeqCst);
-                    self.reachable.store(true, Ordering::SeqCst);
                     *self.public_ip.lock().unwrap() = Some(ext);
-                    let public = !match ext {
-                        IpAddr::V4(v4) => v4.is_private() || v4.is_loopback() || v4.octets()[0] == 100,
-                        IpAddr::V6(_) => false,
+                    let publique = match ext {
+                        IpAddr::V4(v4) => portmap::est_publique(v4),
+                        IpAddr::V6(_) => true,
                     };
-                    if public {
-                        let _ = ext;
-                        log(&crate::tf!("[ ] Port {port} ouvert automatiquement sur la box : ce PC peut accueillir des nœuds du monde entier.", "[ ] Port {port} opened automatically on the router: this PC can accept nodes from all over the world."));
-                    } else {
-                        log(&crate::tf!("[i] Port ouvert sur la box, mais l'adresse {ext} n'est pas publique : ce PC n'est joignable que par les nœuds déjà connectés.", "[i] Port opened on the router, but the address {ext} is not public: only already-connected nodes can reach this PC."));
-                    }
+                    self.reachable.store(publique, Ordering::SeqCst);
+                    if publique { PortState::Open { port, via } } else { PortState::Shared { port } }
                 }
-                Ok((_, port)) => external = Some(port),
-                Err(e) if first => log(&crate::tf!(
-                    "[i] Ouverture automatique du port impossible ({e}). Ce PC mine normalement, mais les autres ne peuvent pas s'y connecter les premiers.",
-                    "[i] Could not open the port automatically ({e}). This PC mines normally, but others cannot connect to it first."
-                )),
-                Err(_) => {}
+                Err(EchecPort::PasDeBox) => {
+                    self.reachable.store(false, Ordering::SeqCst);
+                    PortState::NoRouter
+                }
+                Err(EchecPort::Refus) => {
+                    self.reachable.store(false, Ordering::SeqCst);
+                    PortState::Refused
+                }
+            };
+            let change = {
+                let mut e = self.port_state.lock().unwrap();
+                let c = *e != nouvel_etat;
+                *e = nouvel_etat.clone();
+                c
+            };
+            if change {
+                let ligne = if nouvel_etat.joignable() { "[ ] " } else { "[i] " };
+                log(&format!("{ligne}{}", nouvel_etat.titre()));
             }
-            first = false;
-            std::thread::sleep(Duration::from_secs(1_800));
+            let pause = if nouvel_etat.niveau() == 1 { RENOUVELLEMENT_S } else { REESSAI_S };
+            std::thread::sleep(Duration::from_secs(pause));
         }
+    }
+
+    /// État de l'ouverture du port (pour l'accueil et les Réglages).
+    pub fn port_state(&self) -> PortState {
+        self.port_state.lock().unwrap().clone()
     }
 
     // ---------- Découverte mondiale sans serveur (DHT BitTorrent) ----------

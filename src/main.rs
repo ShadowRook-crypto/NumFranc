@@ -473,7 +473,7 @@ fn console(node: Arc<Node>) {
             ["carnet", "retirer", name] => node.wallet.lock().unwrap().remove_contact(name).map(|_| println!("« {name} » retiré.")),
             ["secours"] => (|| {
                 let code = ask_secret("Code de dépense : ");
-                let shares = node.wallet.lock().unwrap().recovery_shares(&code)?;
+                let shares = node.recovery_shares(&code)?;
                 for (i, s) in shares.iter().enumerate() {
                     println!("  Morceau {} : {s}", i + 1);
                 }
@@ -482,10 +482,9 @@ fn console(node: Arc<Node>) {
             })(),
             ["motdepasse"] => (|| {
                 let old = ask_secret("Code de dépense ACTUEL : ");
-                node.wallet.lock().unwrap().check_spend_code(&old)?;
                 let (o, s) = ask_new_passwords();
                 println!("Rechiffrement...");
-                node.wallet.lock().unwrap().change_passwords(&old, &o, &s).map(|_| println!("Mots de passe changés."))
+                node.change_passwords(&old, &o, &s).map(|_| println!("Mots de passe changés."))
             })(),
             ["quitter"] | ["exit"] | ["quit"] => {
                 println!("Au revoir.");
@@ -520,10 +519,14 @@ fn main() {
     {
         opts.data_dir = data;
     }
-    // Fichier noeuds.txt (à côté du lanceur) : un nœud par ligne, ex. 192.168.1.35:6910
-    if let Ok(list) = std::fs::read_to_string("noeuds.txt") {
-        for l in list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
-            opts.peers.push(l.to_string());
+    // Fichier noeuds.txt (à côté du lanceur, ou dans le dossier des données) : un nœud par ligne, ex. 192.168.1.35:6910
+    for file in [PathBuf::from("noeuds.txt"), opts.data_dir.join("noeuds.txt")] {
+        if let Ok(list) = std::fs::read_to_string(file) {
+            for l in list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+                if !opts.peers.iter().any(|p| p == l) {
+                    opts.peers.push(l.to_string());
+                }
+            }
         }
     }
     println!("Données : {}", opts.data_dir.display());

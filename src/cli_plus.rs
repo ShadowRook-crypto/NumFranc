@@ -33,7 +33,8 @@ Fonctions avancées :
 
 fn code(node: &Arc<Node>) -> Result<Zeroizing<String>, String> {
     let c = ask_secret("Code de dépense : ");
-    node.wallet.lock().unwrap().check_spend_code(&c)?;
+    // Ouvre le coffre sans rien verrouiller (Argon2) ; l'opération qui suit reprend la graine (voir `submit`).
+    node.prepare_spend(&c)?;
     Ok(c)
 }
 
@@ -42,7 +43,9 @@ fn submit(node: &Arc<Node>, f: impl FnOnce(&mut numfranc::wallet::Wallet, &numfr
         let c = node.chain.lock().unwrap();
         let mp = node.mempool.lock().unwrap();
         let mut w = node.wallet.lock().unwrap();
-        f(&mut w, &c, &mp)?
+        let r = f(&mut w, &c, &mp);
+        w.clear_pre_seed();
+        r?
     };
     node.submit_tx(tx)
 }
@@ -78,7 +81,9 @@ pub fn run(node: &Arc<Node>, parts: &[&str]) -> Option<Result<(), String>> {
                 return Err("annulé".into());
             }
             let c = ask_secret("Code de dépense : ");
-            node.wallet.lock().unwrap().freeze(&c)?;
+            let r = node.wallet.lock().unwrap().freeze(&c);
+            node.clear_spend();
+            r?;
             println!("Portefeuille gelé.");
             Ok(())
         })(),
@@ -214,7 +219,9 @@ pub fn run(node: &Arc<Node>, parts: &[&str]) -> Option<Result<(), String>> {
         })(),
         ["groupe", "signer", text] => (|| {
             let c = code(node)?;
-            let s = node.wallet.lock().unwrap().ms_sign(text, Some(&c))?;
+            let s = node.wallet.lock().unwrap().ms_sign(text, Some(&c));
+            node.clear_spend();
+            let s = s?;
             println!("Proposition signée par vous (à transmettre au membre suivant ou à envoyer) :\n{s}");
             Ok(())
         })(),
@@ -228,7 +235,9 @@ pub fn run(node: &Arc<Node>, parts: &[&str]) -> Option<Result<(), String>> {
             let a = parse_amount(amount)?;
             let c = code(node)?;
             let ch = node.chain.lock().unwrap();
-            let proof = node.wallet.lock().unwrap().prove_reserve(&ch, a, &rest.join(" "), Some(&c))?;
+            let proof = node.wallet.lock().unwrap().prove_reserve(&ch, a, &rest.join(" "), Some(&c));
+            node.clear_spend();
+            let proof = proof?;
             println!("Preuve de réserve (au moins {}) :\n{proof}", format_amount(a));
             Ok(())
         })(),

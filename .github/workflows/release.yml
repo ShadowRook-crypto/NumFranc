@@ -72,8 +72,54 @@ jobs:
           echo "Reproductible : les deux empreintes sont identiques."
           echo "empreinte=$(cat /tmp/premier.txt)" >> "$GITHUB_OUTPUT"
 
+  # Installeurs « double-clic » : un disque .dmg pour Mac, un installeur .exe pour Windows.
+  # Si l'un d'eux échoue, la version est quand même publiée (sans lui) : regarde alors les avertissements.
+  installeur-mac:
+    needs: build
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { path: dist-bin, pattern: "numfranc-macos-*", merge-multiple: true }
+      - run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          mkdir -p dist-installeurs
+          ./packaging/outils-installeurs/macos-dmg.sh "$VERSION" dist-bin/numfranc-macos-arm64 dist-bin/numfranc-macos-x86_64 dist-installeurs/NumFranc-macos.dmg
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with: { name: installeur-mac, path: dist-installeurs/ }
+
+  installeur-windows:
+    needs: build
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { path: dist-bin, pattern: "numfranc-windows-*", merge-multiple: true }
+      - run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          MAKENSIS="$(command -v makensis || true)"
+          if [ -z "$MAKENSIS" ]; then
+            choco install nsis -y --no-progress
+            MAKENSIS="/c/Program Files (x86)/NSIS/makensis.exe"
+          fi
+          mkdir -p dist-installeurs
+          PY="$(command -v python3 || command -v python)"
+          "$PY" packaging/outils-installeurs/make-icns.py ico assets/logo-256.png dist-installeurs/numfranc.ico
+          "$MAKENSIS" -V2 -DVERSION="$VERSION" \
+            -DPROGRAMME="$(cygpath -w "$PWD/dist-bin/numfranc-windows-x86_64.exe")" \
+            -DICONE="$(cygpath -w "$PWD/dist-installeurs/numfranc.ico")" \
+            -DSORTIE="$(cygpath -w "$PWD/dist-installeurs/NumFranc-windows-installation.exe")" \
+            "$(cygpath -w "$PWD/packaging/outils-installeurs/windows.nsi")"
+          rm dist-installeurs/numfranc.ico
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with: { name: installeur-windows, path: dist-installeurs/ }
+
   package:
-    needs: [build, reproductible]
+    needs: [build, reproductible, installeur-mac, installeur-windows]
+    # Les installeurs sont facultatifs (continue-on-error) : on publie même si l'un d'eux a échoué.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.reproductible.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -85,9 +131,22 @@ jobs:
           publie="$(python3 -c "import hashlib,sys; print(hashlib.sha3_512(open(sys.argv[1],'rb').read()).hexdigest())" dist-bin/numfranc-linux-x86_64)"
           echo "publié    : $publie"; echo "contrôle  : ${{ needs.reproductible.outputs.empreinte }}"
           test "$publie" = "${{ needs.reproductible.outputs.empreinte }}"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true   # aucun installeur reçu (échec des jobs ci-dessus) : on publie quand même
+        with: { path: dist-installeurs, pattern: "installeur-*", merge-multiple: true }
+      # Paquets Linux (.deb) : double-clic dans le gestionnaire de fichiers.
+      - run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          mkdir -p dist-installeurs
+          ./packaging/outils-installeurs/linux-deb.sh "$VERSION" amd64 dist-bin/numfranc-linux-x86_64  dist-installeurs/NumFranc-linux-amd64.deb
+          ./packaging/outils-installeurs/linux-deb.sh "$VERSION" arm64 dist-bin/numfranc-linux-aarch64 dist-installeurs/NumFranc-linux-arm64.deb
+          for f in NumFranc-macos.dmg NumFranc-windows-installation.exe; do
+            [ -f "dist-installeurs/$f" ] || echo "::warning::Installeur absent de cette version : $f (voir les jobs installeur-mac / installeur-windows)"
+          done
+          ls -l dist-installeurs
       - run: chmod +x dist-bin/* && ./scripts/make-dist.sh dist && cd dist && zip -r NumFranc.zip NumFranc
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: NumFranc, path: dist/NumFranc.zip }
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with: { files: "dist/NumFranc.zip\ndist/NumFranc/SHA3SUMS.txt" }
+        with: { files: "dist/NumFranc.zip\ndist/NumFranc/SHA3SUMS.txt\ndist-installeurs/*" }

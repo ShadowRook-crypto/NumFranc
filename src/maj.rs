@@ -66,7 +66,7 @@ pub fn analyser(manifeste: &[u8], signature: &[u8], cle: &[u8; PUBLIC_KEY_LEN], 
 /// Télécharge un fichier avec curl (https uniquement, taille et durée limitées).
 fn telecharger(nom: &str, destination: &Path) -> Result<Vec<u8>, String> {
     let url = format!("{BASE}{nom}");
-    let ok = std::process::Command::new("curl")
+    let ok = std::process::Command::new(crate::install::system_tool("curl"))
         .args(["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "30", "--max-filesize", "1000000", "-o"])
         .arg(destination)
         .arg(&url)
@@ -100,7 +100,7 @@ pub fn ouvrir_page() {
     } else {
         ("xdg-open", &[PAGE_TELECHARGEMENT])
     };
-    let _ = std::process::Command::new(prog).args(args).spawn();
+    let _ = std::process::Command::new(crate::install::system_tool(prog)).args(args).spawn();
 }
 
 #[cfg(test)]

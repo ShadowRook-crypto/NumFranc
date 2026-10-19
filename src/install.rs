@@ -87,10 +87,84 @@ fn xml(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
+/// Chemin complet d'un outil du système. Sous Windows et macOS, on n'appelle jamais un programme « cherché dans le PATH »
+/// ou à côté de NumFranc : un faux `reg.exe` ou `curl.exe` posé dans un dossier modifiable y serait lancé à sa place.
+pub fn system_tool(name: &str) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        let root = PathBuf::from(std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into()));
+        match name {
+            "powershell" => root.join("System32").join("WindowsPowerShell").join("v1.0").join("powershell.exe"),
+            "explorer" => root.join("explorer.exe"),
+            n => root.join("System32").join(format!("{n}.exe")),
+        }
+    } else if cfg!(target_os = "macos") {
+        match name {
+            "curl" | "open" => PathBuf::from(format!("/usr/bin/{name}")),
+            n => PathBuf::from(n),
+        }
+    } else {
+        PathBuf::from(name)
+    }
+}
+
+/// Vrai si NumFranc a été installé par un paquet ou un installeur (.deb, .dmg glissé dans Applications,
+/// installeur Windows), et non lancé depuis le dossier téléchargé : le menu et les liens nfr: sont alors déjà en place.
+pub fn installe_par_paquet() -> bool {
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let exe = exe.canonicalize().unwrap_or(exe);
+    if cfg!(target_os = "linux") {
+        exe.starts_with("/usr/")
+    } else if cfg!(target_os = "macos") {
+        // Une vraie app : Contents/MacOS/NumFranc, sans le fichier lanceur.txt des copies faites par NumFranc.
+        exe.parent().is_some_and(|m| m.ends_with("Contents/MacOS") && m.parent().is_some_and(|c| !c.join("Resources/lanceur.txt").exists()))
+    } else if cfg!(target_os = "windows") {
+        let s = exe.display().to_string().to_lowercase();
+        s.ends_with("\\programs\\numfranc\\numfranc.exe")
+    } else {
+        false
+    }
+}
+
+/// Premier lancement : NumFranc se range tout seul dans le menu des applications et prend en charge
+/// les liens nfr:, sans que l'utilisateur ait quoi que ce soit à faire. Une seule fois (fichier-témoin).
+pub fn premier_lancement(data_dir: &Path) {
+    let marque = data_dir.join("menu-ok.txt");
+    if marque.exists() {
+        return;
+    }
+    let _ = std::fs::create_dir_all(data_dir);
+    if add_to_menu(data_dir).is_ok() {
+        let _ = std::fs::write(&marque, "ok\n");
+    }
+}
+
+/// Faut-il montrer l'écran « Bienvenue » ? Oui, jusqu'à ce que l'utilisateur l'ait fermé une fois.
+pub fn bienvenue_a_montrer(data_dir: &Path) -> bool {
+    !data_dir.join("bienvenue-vue.txt").exists()
+}
+
+pub fn bienvenue_vue(data_dir: &Path) {
+    let _ = std::fs::write(data_dir.join("bienvenue-vue.txt"), "ok\n");
+}
+
 /// Ajoute NumFranc au menu des applications. Renvoie une phrase décrivant ce qui a été fait.
 pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.canonicalize().unwrap_or(exe);
+    if installe_par_paquet() {
+        // Déjà installé proprement. Sur Mac, on signale seulement l'app au Finder (liens nfr:).
+        if cfg!(target_os = "macos") {
+            let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+            if let Some(bundle) = exe.parent().and_then(Path::parent).and_then(Path::parent) {
+                let _ = std::process::Command::new(lsregister).arg("-f").arg(bundle).status();
+            }
+        }
+        return Ok(crate::i18n::t(
+            "NumFranc est déjà installé : il est dans le menu des applications, et les liens nfr: s'ouvrent avec lui.",
+            "NumFranc is already installed: it is in the applications menu, and nfr: links open with it.",
+        )
+        .into());
+    }
     let workdir = launcher_dir(&exe);
     let data = data_dir.display().to_string();
     for p in [exe.display().to_string(), workdir.display().to_string(), data.clone()] {
@@ -172,7 +246,7 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
             ps_quote(&workdir.display().to_string()),
             ps_quote(&ico_path.display().to_string())
         );
-        let ok = std::process::Command::new("powershell")
+        let ok = std::process::Command::new(system_tool("powershell"))
             .args(["-NoProfile", "-Command", &ps])
             .status()
             .map(|s| s.success())
@@ -182,7 +256,7 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
             // reg.exe est appelé directement, sans passer par un interpréteur de commandes.
             let cmd = format!("\"{}\" --dossier \"{}\" \"%1\"", exe.display(), data);
             let key = r"HKCU\Software\Classes\nfr";
-            let reg = |args: &[&str]| std::process::Command::new("reg").args(args).status().map(|s| s.success()).unwrap_or(false);
+            let reg = |args: &[&str]| std::process::Command::new(system_tool("reg")).args(args).status().map(|s| s.success()).unwrap_or(false);
             let _ = reg(&["add", key, "/ve", "/d", "URL:NumFranc", "/f"])
                 && reg(&["add", key, "/v", "URL Protocol", "/d", "", "/f"])
                 && reg(&["add", &format!(r"{key}\shell\open\command"), "/ve", "/d", &cmd, "/f"]);
@@ -329,7 +403,7 @@ fn autostart_path() -> Result<PathBuf, String> {
 /// Le démarrage automatique à l'ouverture de session est-il en place ?
 pub fn autostart_enabled() -> bool {
     if cfg!(target_os = "windows") {
-        std::process::Command::new("reg")
+        std::process::Command::new(system_tool("reg"))
             .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "/v", AUTOSTART_NAME])
             .output()
             .map(|o| o.status.success())
@@ -355,9 +429,9 @@ pub fn set_autostart(enable: bool, data_dir: &Path) -> Result<String, String> {
         let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
         let ok = if enable {
             let cmd = format!("\"{}\" --reduit --dossier \"{}\"", exe.display(), data);
-            std::process::Command::new("reg").args(["add", key, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &cmd, "/f"]).status().map(|s| s.success()).unwrap_or(false)
+            std::process::Command::new(system_tool("reg")).args(["add", key, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &cmd, "/f"]).status().map(|s| s.success()).unwrap_or(false)
         } else {
-            let _ = std::process::Command::new("reg").args(["delete", key, "/v", AUTOSTART_NAME, "/f"]).status();
+            let _ = std::process::Command::new(system_tool("reg")).args(["delete", key, "/v", AUTOSTART_NAME, "/f"]).status();
             true
         };
         return if ok { Ok(if enable { on } else { off }.into()) } else { Err("écriture du registre impossible".into()) };

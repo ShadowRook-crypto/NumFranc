@@ -2,7 +2,7 @@
 title: NumFranc (NFR)
 subtitle: A peer-to-peer digital currency designed from day one to withstand quantum computers
 kind: Whitepaper
-version: Version 1.0 — October 2026
+version: Version 1.1 — October 2026
 author: ShadowRook
 ---
 
@@ -330,14 +330,14 @@ NumFranc depends on no server. A node finds its peers in four ways:
 
 1. **On the local network**: a UDP announcement every 10 seconds on port 6910.
 2. **Through BitTorrent's decentralised directory** (the "Mainline" DHT, used by millions of computers): each node registers under an identifier specific to NumFranc, derived from SHA3-512 and the genesis hash, then looks up the other registered nodes. The lookup runs every minute at startup, then every 10 minutes.
-3. **By opening the port automatically** on the home router (UPnP), to be reachable from outside.
+3. **By opening the port automatically** on the home router (UPnP, then NAT-PMP if UPnP does not answer), to be reachable from outside. The request is renewed every 10 minutes and repeated every 5 minutes while it fails; if the program stops, the router closes the port by itself within 20 minutes. The status (open, or why not and what to do) is shown on the home screen and in Settings > Connection. Without the open port, the node still works: it connects to others, but others cannot connect to it first.
 4. **From memory** of peers already met, stored in the file `peers.txt`.
 
 At startup, a node waits 20 seconds to synchronise before starting to mine, so as not to work on an outdated chain. It requests missing blocks in batches of at most 500.
 
 ### 8.3 Transaction pool
 
-Valid transactions not yet included in a block wait in a pool of at most 64 MiB. Only one nickname registration at a time may target a given name there: this prevents a miner from producing a block with two conflicting registrations.
+Valid transactions not yet included in a block wait in a pool of at most 64 MiB. Only one nickname registration at a time may target a given name there: this prevents a miner from producing a block with two conflicting registrations. When the pool is full, as in Bitcoin, a transaction that pays a higher fee per byte replaces the cheapest ones instead of being refused.
 
 ### 8.4 Protections against abuse
 
@@ -347,6 +347,9 @@ An open network inevitably receives messages from malicious peers. Since version
 - **Blocks sent one by one**: in reply to a request, blocks are read and sent one at a time, up to 500 blocks or 32 MiB. Requests that come too close together are ignored, and an overly insistent peer is disconnected.
 - **Cheapest checks first**: a relayed transaction must not exceed 2 MiB; the node then checks that the spent coins exist, and only at the end the signatures, outside the locks. A wrong signature gets the peer banned for 24 hours.
 - **Two-table peer directory**, modelled on Bitcoin's *addrman*: addresses already tried and new ones. Addresses are grouped by Internet neighbourhood (the first two numbers of the IPv4 address): at most 8 new and 4 tried per neighbourhood, at most 64 brought by the same peer, and random replacement when a table is full. Private addresses (router, local network) coming from the Internet are rejected: computers at home find each other through local discovery. A node opens at most one outbound connection per neighbourhood and accepts at most 4 inbound connections from the same neighbourhood. A peer may send only one address every 10 seconds, on top of the reply to our own request.
+- **Honest peers are not punished** (version 1.1): a block dated more than 2 hours in the future by our clock is ignored without banning its sender (either computer's clock may be off), and the program tells the user to check the time. A block already rejected, or built on a rejected block, only gets the connection closed, without a 24-hour ban. More than 20 orphan blocks (unknown parent) per minute from one peer also close the connection.
+- **A slow peer delays nobody**: blocks and transactions are sent to each peer in parallel, so one overloaded connection no longer holds up the others.
+- **No freezing while spending**: the heavy computation of the spending code (Argon2, several seconds) is done before taking any lock, so the chain, mining and the window keep running while a payment is prepared.
 
 ## 9. Wallet
 
@@ -392,7 +395,7 @@ The user can set a threshold. Above it, each payment is sent as a **retained pay
 
 ## 10. Application and distribution
 
-NumFranc is **a single program**. A double-click opens a window that creates or opens the wallet, then starts the node and mining. The window shows the essentials: Home, Send, Receive, History, Address book and Settings, plus Security and Explain in a “More” menu. **Expert mode** (in Settings) adds Explorer, Issuance, Advanced and Network. The interface is available in **French and English**, with a light or dark theme. One command adds NumFranc to the applications menu, installing nothing outside the user's home folder.
+NumFranc is **a single program**. A double-click opens a window that creates or opens the wallet, then starts the node and mining. The window shows the essentials: Home, Send, Receive, History, Address book and Settings, plus Security and Explain in a “More” menu. **Expert mode** (in Settings) adds Explorer, Issuance, Advanced and Network. The interface is available in **French and English**, with a light or dark theme. On first launch the program adds itself to the applications menu and registers the `nfr:` payment links, by itself and only inside the user's home folder. Since version 1.1 it is distributed as **double-click installers**: a `.dmg` disk for the Mac (drag NumFranc onto Applications), an installer `.exe` for Windows (no administrator rights needed, uninstalling never touches the wallet) and `.deb` packages for Linux (amd64 and arm64). They are not signed by Apple or Microsoft, which requires paid accounts tied to a real identity: the first opening therefore shows one warning, explained on the download page. The hashes of the installers are listed in the same signed file `SHA3SUMS.txt`, so the release signature covers them too.
 
 The software is written in **Rust**, a language that rules out whole families of memory errors by design. It is published under the **MIT licence** on GitHub. For each release, a continuous integration service runs the test suite, then builds the program for five platforms: Linux x86-64, Linux ARM64, macOS Apple Silicon, macOS Intel and Windows x86-64. It also produces the archive `NumFranc.zip` and the hash file `SHA3SUMS.txt`. The build is **reproducible**: the Rust version, the dependencies and the paths are fixed, so two builds of the same code give exactly the same program. The service checks this by building the Linux version twice; anyone can repeat the test with `scripts/build-reproductible.sh`.
 

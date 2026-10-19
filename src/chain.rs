@@ -64,9 +64,18 @@ pub struct IndexEntry {
     pub invalid: bool,
 }
 
+/// Message interne de `check_block` pour un horodatage trop loin dans le futur (voir `ChainError::FutureTime`).
+const FUTURE_TIME_MSG: &str = "horodatage trop loin dans le futur";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChainError {
     Invalid(String),
+    /// Bloc daté de plus de 2 h dans le futur selon NOTRE horloge : il n'est pas forcément faux (horloge d'un des deux
+    /// ordinateurs décalée), donc il est ignoré sans punir celui qui l'envoie (comme Bitcoin, BLOCK_TIME_FUTURE).
+    FutureTime,
+    /// Bloc déjà rejeté par nous, ou fils d'un bloc rejeté : le pair ne l'a peut-être pas encore appris.
+    /// On coupe la connexion, sans l'exclure 24 h.
+    KnownBad(String),
     ReorgTooDeep { depth: u64 },
     Orphan,
     AlreadyKnown,
@@ -507,7 +516,7 @@ impl Chain {
             return Err("début de fenêtre de difficulté daté trop tôt (time warp)".into());
         }
         if hdr.timestamp > now.saturating_add(MAX_FUTURE_DRIFT) {
-            return Err("horodatage trop loin dans le futur".into());
+            return Err(FUTURE_TIME_MSG.into());
         }
         // Vérifications bon marché d'abord, preuve de travail (Argon2, ~2 ms) ensuite.
         if !trusted && !hdr.meets_target() {
@@ -565,12 +574,12 @@ impl Chain {
     fn add_block_inner(&mut self, block: Block, now: u64, loc: Option<(u64, u32)>) -> Result<Added, ChainError> {
         let hash = block.hash();
         if let Some(e) = self.index.get(&hash) {
-            return Err(if e.invalid { ChainError::Invalid("bloc déjà rejeté".into()) } else { ChainError::AlreadyKnown });
+            return Err(if e.invalid { ChainError::KnownBad("bloc déjà rejeté".into()) } else { ChainError::AlreadyKnown });
         }
         let parent_hash = block.header.previous_block_hash;
         let (parent_height, parent_work) = match self.index.get(&parent_hash) {
             None => return Err(ChainError::Orphan),
-            Some(p) if p.invalid => return Err(ChainError::Invalid("parent invalide".into())),
+            Some(p) if p.invalid => return Err(ChainError::KnownBad("parent invalide".into())),
             Some(p) => (p.height, p.work.clone()),
         };
         let height = parent_height + 1;
@@ -592,7 +601,8 @@ impl Chain {
                 return Err(ChainError::ReorgTooDeep { depth });
             }
         }
-        self.check_block(&block, &parent_hash, height, now, loc.is_some()).map_err(ChainError::Invalid)?;
+        self.check_block(&block, &parent_hash, height, now, loc.is_some())
+            .map_err(|e| if e == FUTURE_TIME_MSG { ChainError::FutureTime } else { ChainError::Invalid(e) })?;
 
         let work = parent_work + block_work(&block.header.target);
         self.index.insert(hash, IndexEntry { header: block.header.clone(), height, work: work.clone(), invalid: false });
@@ -876,7 +886,7 @@ pub mod tests {
     fn horodatage_futur_refuse() {
         let mut c = test_chain();
         let b = make_block(&c, c.tip(), vec![], [5; 32], 10_000, b"");
-        assert!(matches!(c.add_block(b, GENESIS_TIMESTAMP), Err(ChainError::Invalid(_))));
+        assert_eq!(c.add_block(b, GENESIS_TIMESTAMP), Err(ChainError::FutureTime));
     }
 
     #[test]

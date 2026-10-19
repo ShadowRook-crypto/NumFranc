@@ -1,7 +1,19 @@
 NumFranc (NFR) — mode d'emploi
 ==============================
 
-1. LANCER
+1. INSTALLER ET LANCER (English: see README-EN.txt)
+   Le plus simple : le fichier d'installation de votre système, sur la page des versions
+   (https://github.com/ShadowRook-crypto/NumFranc/releases/latest). Ouvrez le dossier « Téléchargements », puis :
+   - Mac     : double-clic sur NumFranc-macos.dmg ; glissez NumFranc vers Applications ; ouvrez-le depuis le Launchpad.
+               La toute première fois, si macOS refuse : clic droit sur NumFranc > Ouvrir > Ouvrir (une seule fois).
+   - Windows : double-clic sur NumFranc-windows-installation.exe, puis « Suivant ». Si Windows affiche
+               « Windows a protégé votre ordinateur » : Informations complémentaires > Exécuter quand même.
+               NumFranc est ensuite dans le menu Démarrer.
+   - Linux   : double-clic sur NumFranc-linux-amd64.deb (ou -arm64.deb), puis « Installer »
+               (ou : sudo apt install ./NumFranc-linux-amd64.deb). NumFranc est dans le menu des applications.
+   Au premier lancement, NumFranc se range tout seul dans le menu des applications et active les liens de paiement nfr:.
+
+   Sans installeur (ce dossier, NumFranc.zip) :
    - Mac     : clic droit sur « Lancer NumFranc.command » > Ouvrir (la 1re fois), puis double-clic.
    - Windows : double-clic sur « Lancer NumFranc.bat ».
    - Linux   : dans un terminal, ./lancer-numfranc.sh
@@ -31,11 +43,14 @@ NumFranc (NFR) — mode d'emploi
    « minage off » pour l'arrêter, ou lancez avec --coeurs 1 pour le ralentir.
 
 3. REJOINDRE LE RÉSEAU
-   Sur le même Wi-Fi ou réseau local : rien à faire, les nœuds se trouvent tout seuls.
+   Rien à régler : NumFranc trouve les autres ordinateurs tout seul (réseau local, puis annuaire mondial),
+   et il demande lui-même à votre box d'ouvrir le port 6910 (UPnP, puis NAT-PMP) pour que les autres
+   puissent aussi se connecter à vous. L'état s'affiche sur l'accueil et dans Réglages > Connexion, avec,
+   si ça ne marche pas, la raison et quoi faire (UPnP désactivé sur la box, adresse Internet partagée par
+   l'opérateur, etc.). Même sans ouverture du port, NumFranc fonctionne : il se connecte aux autres.
+   Pour ajouter un nœud à la main : écrivez son adresse dans noeuds.txt (ex. monnoeud.fr:6910, dans ce dossier
+   ou dans le dossier des données), ou tapez dans NumFranc :  connecter monnoeud.fr:6910
    Au démarrage, le minage attend 20 secondes et rattrape la chaîne des autres avant de miner.
-   Pour un nœud sur Internet : écrivez son adresse dans noeuds.txt (ex. monnoeud.fr:6910),
-   ou tapez dans NumFranc :  connecter monnoeud.fr:6910
-   Pour accepter des connexions depuis Internet, ouvrez le port TCP 6910 sur la box.
 
 4. LA FENÊTRE (français ou anglais)
    L'essentiel : Accueil (solde, minage, réseau, graphique des gains sur 7 ou 30 jours),
@@ -75,7 +90,22 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. CORRECTIONS DE LA v1.0.1
+6. NOUVEAUTÉS DE LA v1.1.0
+   - Installeurs « double-clic » : NumFranc-macos.dmg (Mac), NumFranc-windows-installation.exe (Windows),
+     NumFranc-linux-amd64.deb / -arm64.deb (Linux). Plus besoin de terminal.
+   - Au premier lancement : rangement automatique dans le menu des applications, liens nfr: activés,
+     et un petit écran « Quelques mots avant de commencer ».
+   - Ouverture automatique du port sur la box (UPnP, puis NAT-PMP, renouvelée toutes les 10 minutes), avec un
+     message d'état clair sur l'accueil et dans Réglages > Connexion.
+   - Lien de paiement nfr: : le montant arrive maintenant correctement dans « Envoyer » (« invalid amount » corrigé).
+   - Paiements : le calcul du code de dépense (plusieurs secondes) ne fige plus le nœud ni la fenêtre.
+   - Réseau : un pair dont l'horloge est décalée n'est plus exclu 24 h ; un pair lent ne bloque plus la diffusion
+     aux autres ; les blocs orphelins sont limités par pair ; quand la file des paiements est pleine, un paiement
+     qui paie plus cher prend la place des moins chers (comme Bitcoin).
+   - Windows : les outils du système (reg, powershell, curl) sont appelés par leur chemin complet.
+   - Aucun changement de chaîne ni de portefeuille : les v0.7, v1.0 et v1.1 se parlent.
+
+7. CORRECTIONS DE LA v1.0.1
    - Portefeuille : un ancien portefeuille (importé d'une vieille version) pouvait faire planter
      le minage environ 30 secondes après le démarrage. Corrigé ; aucun fonds n'était en danger.
    - Linux : la fenêtre s'ouvre enfin (le programme utilise maintenant les bibliothèques d'affichage du système).
@@ -83,7 +113,7 @@ NumFranc (NFR) — mode d'emploi
      envoie les liens nfr:… ; elle se met à jour toute seule quand vous installez une nouvelle version.
      Après la mise à jour, cliquez UNE fois sur « Ajouter NumFranc au menu des applications » (Réglages).
 
-7. NOUVEAUTÉS DE LA v1.0.0
+8. NOUVEAUTÉS DE LA v1.0.0
    - Nouveau logo, et une fenêtre plus simple : 6 onglets, le reste dans « Plus… » ou le mode expert.
    - Liens de paiement cliquables : un clic sur un lien nfr:… ouvre NumFranc sur « Envoyer », déjà rempli
      (rien n'est envoyé sans votre vérification et votre code de dépense). Pour l'activer, cliquez une fois
@@ -96,7 +126,7 @@ NumFranc (NFR) — mode d'emploi
      locktime à 0). Elles ne changent rien aux blocs déjà minés ; mettez quand même à jour vos nœuds.
    - Aucun changement de chaîne ni de portefeuille : les v0.7 et v1.0.0 se parlent.
 
-8. NOUVEAUTÉS DE LA v0.6
+9. NOUVEAUTÉS DE LA v0.6
    - Pseudos : « alice.nfr » à la place de l'adresse de 77 caractères (inscrit dans la chaîne ;
      frais uniques : 100 NFR pour 3 lettres, 25 pour 4, 5 pour 5 à 7, 1 à partir de 8).
      Dans Envoyer, on peut écrire le pseudo, une adresse, un nom du carnet ou un lien nfr:….
@@ -113,11 +143,12 @@ NumFranc (NFR) — mode d'emploi
    - Le fichier du portefeuille passe au format 04 à la première ouverture : une v0.5 ne pourra plus le lire.
      Faites une copie de wallet.dat avant la mise à jour si vous voulez pouvoir revenir en arrière.
 
-9. BON À SAVOIR
+10. BON À SAVOIR
    - Une récompense de minage devient dépensable après 100 blocs.
    - Un paiement est considéré comme sûr après 6 blocs.
    - Les données sont dans : Mac ~/Library/Application Support/NumFranc,
      Linux ~/.numfranc, Windows %APPDATA%\NumFranc
+   - Pour vérifier un installeur téléchargé (.dmg, .exe, .deb) : python3 sha3sum.py --fichier SHA3SUMS.txt NOM-DU-FICHIER
    - Vérifiez les empreintes SHA3-512 avant d'utiliser une version téléchargée :
      python3 sha3sum.py --check SHA3SUMS.txt (dans le dossier NumFranc ; tout doit afficher OK).
      La signature SHA3SUMS.txt.sig prouve que ce manifeste vient de l'auteur : vérifiez-la
@@ -125,11 +156,12 @@ NumFranc (NFR) — mode d'emploi
    - Nœud permanent (serveur, sans portefeuille ni minage) : voir SERVEUR.txt.
 
 MISE À JOUR depuis une ancienne version :
-   - depuis la v0.6 ou la v0.7 : remplacez simplement le dossier NumFranc, tout est conservé ;
+   - depuis la v0.6, la v0.7 ou la v1.0 : installez la v1.1 avec l'installeur (ou remplacez le dossier NumFranc),
+     tout est conservé : portefeuille, chaîne, réglages (ils sont dans le dossier des données, pas dans le programme) ;
    - depuis la v0.5 ou avant : voir « NOUVEAUTÉS DE LA v0.6 » (nouvelle chaîne, automatique) ;
    - depuis la v0.2 (adresses NFR1-XXXX) : le portefeuille est conservé, mais la chaîne
      repart de zéro (nouvel algorithme de minage) : renommez le fichier blocks.dat
      du dossier de données en blocks-ancien.dat ;
    - depuis la v0.1 (adresses NFR1 + 128 caractères) : déplacez tout le dossier de données.
 
-Logiciel fourni sans garantie (licence MIT).
+Logiciel fourni sans garantie (licence MIT). NumFranc n'a aucun lien avec FrancNum.

@@ -483,14 +483,20 @@ impl App {
     }
 
     // ------------------------------------------------------------------ Avancé
-    fn run_tx_job(&mut self, ctx: &egui::Context, label: &str, ok_msg: String, f: impl FnOnce(&mut Wallet, &crate::chain::Chain, &crate::mempool::Mempool) -> Result<Transaction, String> + Send + 'static) {
+    fn run_tx_job(&mut self, ctx: &egui::Context, label: &str, ok_msg: String, code: Zeroizing<String>, f: impl FnOnce(&mut Wallet, &crate::chain::Chain, &crate::mempool::Mempool) -> Result<Transaction, String> + Send + 'static) {
         let node = self.node.clone().unwrap();
         self.spawn(label, ctx, move || {
+            // Code de dépense ouvert AVANT de verrouiller la chaîne, le mempool et le portefeuille.
+            if let Err(e) = node.prepare_spend(&code) {
+                return JobResult::Err(e);
+            }
             let tx = {
                 let c = node.chain.lock().unwrap();
                 let mp = node.mempool.lock().unwrap();
                 let mut w = node.wallet.lock().unwrap();
-                f(&mut w, &c, &mp)
+                let r = f(&mut w, &c, &mp);
+                w.clear_pre_seed();
+                r
             };
             match tx.and_then(|tx| node.submit_tx(tx)) {
                 Ok(()) => JobResult::Sent(ok_msg),
@@ -582,9 +588,16 @@ impl App {
                 if ui.add_enabled(!busy && !self.plus.code.is_empty(), egui::Button::new(t("Geler le portefeuille", "Freeze the wallet"))).clicked() {
                     let n = node.clone();
                     let code = Zeroizing::new(std::mem::take(&mut self.plus.code));
-                    self.spawn(t("Gel (quelques secondes)…", "Freezing (a few seconds)…"), ctx, move || match n.wallet.lock().unwrap().freeze(&code) {
-                        Ok(()) => JobResult::Info(t("Portefeuille gelé.", "Wallet frozen.").into()),
-                        Err(e) => JobResult::Err(e),
+                    self.spawn(t("Gel (quelques secondes)…", "Freezing (a few seconds)…"), ctx, move || {
+                        if let Err(e) = n.prepare_spend(&code) {
+                            return JobResult::Err(e);
+                        }
+                        let r = n.wallet.lock().unwrap().freeze(&code);
+                        n.clear_spend();
+                        match r {
+                            Ok(()) => JobResult::Info(t("Portefeuille gelé.", "Wallet frozen.").into()),
+                            Err(e) => JobResult::Err(e),
+                        }
                     });
                 }
             }
@@ -646,7 +659,7 @@ impl App {
                         if ui.add_enabled(!busy && !self.plus.code.is_empty() && !frozen, egui::Button::new(t("Annuler", "Cancel"))).clicked() {
                             let code = Zeroizing::new(self.plus.code.clone());
                             let op = r.op;
-                            self.run_tx_job(ctx, t("Annulation…", "Cancelling…"), t("Paiement annulé : les fonds reviennent sur ton portefeuille.", "Payment cancelled: the funds return to your wallet.").into(), move |w, c, mp| w.cancel_retained(c, mp, op, Some(&code)));
+                            self.run_tx_job(ctx, t("Annulation…", "Cancelling…"), t("Paiement annulé : les fonds reviennent sur ton portefeuille.", "Payment cancelled: the funds return to your wallet.").into(), code.clone(), move |w, c, mp| w.cancel_retained(c, mp, op, Some(&code)));
                         }
                     });
                 }
@@ -671,7 +684,7 @@ impl App {
                     let (code, name) = (Zeroizing::new(self.plus.code.clone()), self.plus.name_input.clone());
                     let msg = tf!("Pseudo demandé : il sera actif dans quelques minutes (dès qu'un bloc le contient).", "Name requested: it will be active in a few minutes (once a block contains it).");
                     self.plus.name_input.clear();
-                    self.run_tx_job(ctx, t("Signature…", "Signing…"), msg, move |w, c, mp| w.register_name(c, mp, &name, Some(&code)));
+                    self.run_tx_job(ctx, t("Signature…", "Signing…"), msg, code.clone(), move |w, c, mp| w.register_name(c, mp, &name, Some(&code)));
                 }
             });
             for (n, h) in &names {
@@ -691,7 +704,7 @@ impl App {
                         match dest {
                             Ok(d) => {
                                 let (code, name) = (Zeroizing::new(self.plus.code.clone()), self.plus.name_target.clone());
-                                self.run_tx_job(ctx, t("Signature…", "Signing…"), t("Transfert envoyé.", "Transfer sent.").into(), move |w, c, mp| w.transfer_name(c, mp, &name, d, Some(&code)));
+                                self.run_tx_job(ctx, t("Signature…", "Signing…"), t("Transfert envoyé.", "Transfer sent.").into(), code.clone(), move |w, c, mp| w.transfer_name(c, mp, &name, d, Some(&code)));
                             }
                             Err(e) => self.error = Some(e),
                         }
@@ -801,7 +814,12 @@ impl App {
                                 let can_sign = !busy && i.i_am_member && !i.i_signed && !i.ready && !frozen && !self.plus.code.is_empty();
                                 if ui.add_enabled(can_sign, egui::Button::new(t("Signer", "Sign"))).clicked() {
                                     let (text, code) = (self.plus.ms_text.clone(), Zeroizing::new(self.plus.code.clone()));
-                                    self.run_text_job(ctx, t("Signature…", "Signing…"), move |n| n.wallet.lock().unwrap().ms_sign(&text, Some(&code)).map(|s| ("proposal".to_string(), s)));
+                                    self.run_text_job(ctx, t("Signature…", "Signing…"), move |n| {
+                                        n.prepare_spend(&code)?;
+                                        let r = n.wallet.lock().unwrap().ms_sign(&text, Some(&code));
+                                        n.clear_spend();
+                                        r.map(|s| ("proposal".to_string(), s))
+                                    });
                                 }
                                 if i.i_signed {
                                     ui.colored_label(p.green, t("OK : tu as signé", "OK : you signed"));
@@ -844,8 +862,13 @@ impl App {
                         Ok(a) => {
                             let (code, ch) = (Zeroizing::new(self.plus.code.clone()), self.plus.reserve_challenge.clone());
                             self.run_text_job(ctx, t("Signature…", "Signing…"), move |n| {
-                                let c = n.chain.lock().unwrap();
-                                n.wallet.lock().unwrap().prove_reserve(&c, a, &ch, Some(&code)).map(|s| ("proof".to_string(), s))
+                                n.prepare_spend(&code)?;
+                                let r = {
+                                    let c = n.chain.lock().unwrap();
+                                    n.wallet.lock().unwrap().prove_reserve(&c, a, &ch, Some(&code))
+                                };
+                                n.clear_spend();
+                                r.map(|s| ("proof".to_string(), s))
                             });
                         }
                         Err(e) => self.error = Some(e),

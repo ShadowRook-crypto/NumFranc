@@ -11,6 +11,7 @@ pub mod i18n;
 pub mod addrman;
 pub mod install;
 pub mod maj;
+pub mod portmap;
 #[cfg(target_os = "macos")]
 pub mod mac_liens;
 pub mod settings;

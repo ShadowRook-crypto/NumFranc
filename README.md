@@ -7,7 +7,21 @@
 Cryptomonnaie à preuve de travail, avec signatures **post-quantiques ML-DSA-87** dès le premier bloc.
 Écrite en Rust, un seul programme : nœud réseau + minage + portefeuille.
 
-> Logiciel fourni **sans garantie** (licence MIT).
+> Logiciel fourni **sans garantie** (licence MIT). NumFranc n'a aucun lien avec « FrancNum » ni avec aucun État ou banque.
+
+## Installer (sans terminal)
+Page de téléchargement : https://shadowrook-crypto.github.io/NumFranc/ (français et anglais).
+
+| Système | Fichier | Installation |
+|---|---|---|
+| Mac | `NumFranc-macos.dmg` | double-clic, glisser NumFranc vers Applications, ouvrir depuis le Launchpad (la 1re fois : clic droit > Ouvrir) |
+| Windows | `NumFranc-windows-installation.exe` | double-clic, « Suivant » (si SmartScreen : Informations complémentaires > Exécuter quand même) |
+| Linux | `NumFranc-linux-amd64.deb` ou `-arm64.deb` | double-clic, ou `sudo apt install ./NumFranc-linux-amd64.deb` |
+
+*English: download `NumFranc-macos.dmg`, `NumFranc-windows-installation.exe` or the `.deb` for your system from the latest release, double-click, done. NumFranc is not affiliated with « FrancNum » or with any state or bank.*
+
+Chaque version est signée (SLH-DSA) : `SHA3SUMS.txt` contient aussi les empreintes des installeurs (lignes `installeurs/…`) ; pour en vérifier un :
+`python3 sha3sum.py --fichier SHA3SUMS.txt NumFranc-macos.dmg` (outil fourni dans `NumFranc.zip`).
 
 ## Paramètres
 | Paramètre | Valeur |
@@ -122,22 +136,27 @@ et Windows, puis publie `NumFranc.zip`.
 - [x] Émission, hachage, en-tête de 212 octets, preuve de travail
 - [x] Transactions UTXO signées ML-DSA-87, Merkle, validation complète
 - [x] Protections anti-51 % (finalité, travail cumulé, maturité, horodatage)
-- [x] Stockage, réseau P2P, synchronisation, découverte des nœuds
-- [x] Découverte automatique sur le réseau local (annonce UDP, port 6910)
-- [ ] Nœuds d'amorçage publics sur Internet (DEFAULT_SEEDS)
-- [x] Portefeuille avec code de secours, minage multi-cœurs, console
-- [x] Lanceurs un clic, compilation multi-plateformes
-- [ ] Chiffrement du portefeuille par mot de passe
+- [x] Stockage, réseau P2P, synchronisation, découverte des nœuds (réseau local, annuaire mondial DHT)
+- [x] Portefeuille chiffré avec code de secours en 3 morceaux, minage multi-cœurs, console
+- [x] Interface graphique (6 onglets, mode expert), liens de paiement `nfr:`
+- [x] Signature des versions (SLH-DSA), vérification des mises à jour, compilations reproductibles
+- [x] Audit de sécurité et corrections « comme Bitcoin » (v1.0)
+- [x] Ouverture automatique du port (UPnP, puis NAT-PMP) avec message d'état, installeurs Mac / Windows / Linux (v1.1)
+- [ ] Nœuds d'amorçage publics permanents (`DEFAULT_SEEDS`, en plus de l'annuaire mondial)
+- [ ] Synchronisation « headers-first »
 - [ ] Interface RPC locale (port 6911) pour une future passerelle d'échange
-- [ ] Interface graphique
-- [ ] Signature des versions (en plus des empreintes)
-- [ ] Audit de sécurité par un spécialiste
+- [ ] Installeurs signés par Apple et Microsoft (comptes payants)
+- [ ] Audit de sécurité par un spécialiste humain
 
 ## Signature des versions
     cargo run --release --example signer_version -- keygen MACLE     # une fois ; MACLE.key reste SECRET
     cargo run --release --example signer_version -- signer SHA3SUMS.txt MACLE.key
     cargo run --release --example signer_version -- verifier SHA3SUMS.txt SHA3SUMS.txt.sig MACLE.pub
 La clé publique (`MACLE.pub`) est committée dans `packaging/cle-publique.txt`. La clé secrète n'est jamais dans le dépôt.
+
+Sur le Mac de l'auteur, une seule commande fait tout (attente de la CI, Wi-Fi coupé pendant la signature, clé effacée, envoi et vérification) :
+
+    ./scripts/signer-version.sh 1.1.0
 
 ## Licence et origine
 Code publié sous licence MIT (voir `LICENSE`). Créé par ShadowRook, avec l'aide de l'IA Claude (Anthropic) pour la conception et l'écriture du code. Aucune garantie.

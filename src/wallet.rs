@@ -83,6 +83,77 @@ impl Group {
     }
 }
 
+/// Ouvre la graine avec le code de dépense (calcul Argon2 : plusieurs secondes).
+fn open_seed(
+    seed: &Option<Zeroizing<[u8; 32]>>,
+    frozen: bool,
+    vault: &Option<Sealed>,
+    first: &Address,
+    spend_code: Option<&str>,
+) -> Result<Zeroizing<[u8; 32]>, String> {
+    if let Some(s) = seed {
+        return Ok(s.clone());
+    }
+    if frozen {
+        return Err(crate::i18n::t(
+            "portefeuille gelé : la graine n'est plus sur cet ordinateur. Dégelez-le avec vos trois codes (onglet Sécurité).",
+            "wallet frozen: the seed is no longer on this computer. Unfreeze it with your three codes (Security tab).",
+        )
+        .into());
+    }
+    let v = vault.as_ref().ok_or("portefeuille sans coffre")?;
+    let code = spend_code.ok_or(crate::i18n::t("code de dépense requis", "spending code required"))?;
+    let key = vault::derive_key(code, &v.salt, v.params)?;
+    let plain = vault::open(&key, b"coffre", v).map_err(|_| crate::i18n::t("code de dépense incorrect", "wrong spending code").to_string())?;
+    let seed: [u8; 32] = plain.as_slice().try_into().map_err(|_| "coffre illisible".to_string())?;
+    let seed = Zeroizing::new(seed);
+    // Vérification : la graine redonne bien l'adresse principale.
+    if address_of(&derive(&seed, 0)) != *first {
+        return Err("coffre incohérent avec ce portefeuille".into());
+    }
+    Ok(seed)
+}
+
+/// Copie des seules données utiles pour ouvrir le coffre : le calcul Argon2 se fait avec elle,
+/// SANS tenir le portefeuille, la chaîne ou le mempool verrouillés (sinon tout le nœud se fige).
+#[derive(Clone)]
+pub struct SpendSnapshot {
+    seed: Option<Zeroizing<[u8; 32]>>,
+    frozen: bool,
+    vault: Option<Sealed>,
+    first: Address,
+    params: KdfParams,
+}
+
+/// Nouveau coffre et nouvelle clé de vue, calculés hors verrou.
+pub struct ChangePlan {
+    vault: Sealed,
+    view: (Zeroizing<[u8; 64]>, KdfParams, [u8; 32]),
+}
+
+impl SpendSnapshot {
+    pub fn open(&self, code: &str) -> Result<Zeroizing<[u8; 32]>, String> {
+        open_seed(&self.seed, self.frozen, &self.vault, &self.first, Some(code))
+    }
+
+    pub fn prepare_change(&self, old_spend: &str, new_open: &str, new_spend: &str) -> Result<ChangePlan, String> {
+        let seed = self.open(old_spend)?;
+        vault::check_password(new_open, vault::MIN_OPEN_PASSWORD, "Mot de passe d'ouverture")?;
+        vault::check_password(new_spend, vault::MIN_SPEND_CODE, "Code de dépense")?;
+        if new_open == new_spend {
+            return Err(crate::i18n::t("le code de dépense doit être différent du mot de passe d'ouverture", "the spending code must differ from the opening password").into());
+        }
+        let p = self.params;
+        let vp = vault::vault_params(p);
+        let vault_salt: [u8; 32] = vault::random()?;
+        let vk = vault::derive_key(new_spend, &vault_salt, vp)?;
+        let new_vault = vault::seal(&vk, vp, vault_salt, b"coffre", seed.as_slice())?;
+        let view_salt: [u8; 32] = vault::random()?;
+        let view_key = vault::derive_key(new_open, &view_salt, p)?;
+        Ok(ChangePlan { vault: new_vault, view: (view_key, p, view_salt) })
+    }
+}
+
 pub struct Wallet {
     /// Graine en clair : seulement pour les portefeuilles de test et pendant une migration.
     pub(crate) seed: Option<Zeroizing<[u8; 32]>>,
@@ -101,6 +172,8 @@ pub struct Wallet {
     pub(crate) frozen: Option<[u8; 32]>,
     pub(crate) protection: Option<Protection>,
     pub(crate) groups: Vec<Group>,
+    /// Graine déjà ouverte (hors verrou) pour l'opération qui suit, valable 2 minutes (voir `SpendSnapshot`).
+    pub(crate) pre_seed: Option<(std::time::Instant, Zeroizing<[u8; 32]>)>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -244,6 +317,12 @@ pub struct HistoryItem {
 }
 
 /// Affiche un montant : 12,5 NFR.
+/// Montant sans l'unité (« 12,5 »), pour remplir un champ de saisie.
+pub fn format_amount_plain(units: u64) -> String {
+    let s = format_amount(units);
+    s.strip_suffix(" NFR").unwrap_or(&s).to_string()
+}
+
 pub fn format_amount(units: u64) -> String {
     let whole = units / MIN_UNIT;
     let frac = units % MIN_UNIT;
@@ -258,7 +337,13 @@ pub fn format_amount(units: u64) -> String {
 
 /// Lit un montant écrit « 12,5 » ou « 12.5 » (8 décimales au maximum), sans flottant.
 pub fn parse_amount(s: &str) -> Result<u64, String> {
-    let s = s.trim().replace(',', ".");
+    let s = s.trim();
+    // Tolère l'unité écrite après le montant (« 1 NFR »), pour qu'un montant copié ne soit pas refusé.
+    let s = match s.len().checked_sub(3).and_then(|i| s.get(i..)) {
+        Some(u) if u.eq_ignore_ascii_case("nfr") => s[..s.len() - 3].trim(),
+        _ => s,
+    };
+    let s = s.replace(',', ".");
     let (w, f) = match s.split_once('.') {
         Some((w, f)) => (w.to_string(), f.to_string()),
         None => (s.clone(), String::new()),
@@ -297,6 +382,7 @@ impl Wallet {
             frozen: None,
             protection: None,
             groups: Vec::new(),
+            pre_seed: None,
         };
         w.fill_pool(&seed, POOL_SIZE);
         w
@@ -432,6 +518,7 @@ impl Wallet {
             frozen: None,
             protection: None,
             groups: Vec::new(),
+            pre_seed: None,
         };
         for i in 0..n {
             let revealed = r.u8().map_err(e)? == 1;
@@ -578,28 +665,36 @@ impl Wallet {
     }
 
     /// Graine en clair, le temps d'une opération : déchiffrée avec le code de dépense.
+    /// Si la graine a déjà été ouverte hors verrou (`SpendSnapshot::open`, voir `Node::prepare_spend`), elle est reprise
+    /// telle quelle : le calcul Argon2 (plusieurs secondes) ne bloque alors ni la chaîne, ni le minage, ni la fenêtre.
     pub(crate) fn seed_with(&self, spend_code: Option<&str>) -> Result<Zeroizing<[u8; 32]>, String> {
-        if let Some(s) = &self.seed {
-            return Ok(s.clone());
+        if let Some((t, s)) = &self.pre_seed {
+            if t.elapsed() < std::time::Duration::from_secs(120) {
+                return Ok(s.clone());
+            }
         }
-        if self.frozen.is_some() {
-            return Err(crate::i18n::t(
-                "portefeuille gelé : la graine n'est plus sur cet ordinateur. Dégelez-le avec vos trois codes (onglet Sécurité).",
-                "wallet frozen: the seed is no longer on this computer. Unfreeze it with your three codes (Security tab).",
-            )
-            .into());
+        open_seed(&self.seed, self.frozen.is_some(), &self.vault, &self.keys[0].0, spend_code)
+    }
+
+    /// Données nécessaires pour ouvrir le coffre SANS garder le portefeuille verrouillé pendant l'Argon2.
+    pub fn spend_snapshot(&self) -> SpendSnapshot {
+        SpendSnapshot {
+            seed: self.seed.clone(),
+            frozen: self.frozen.is_some(),
+            vault: self.vault.clone(),
+            first: self.keys[0].0,
+            params: self.view.as_ref().map(|v| v.1).unwrap_or(vault::STRONG),
         }
-        let v = self.vault.as_ref().ok_or("portefeuille sans coffre")?;
-        let code = spend_code.ok_or(crate::i18n::t("code de dépense requis", "spending code required"))?;
-        let key = vault::derive_key(code, &v.salt, v.params)?;
-        let plain = vault::open(&key, b"coffre", v).map_err(|_| crate::i18n::t("code de dépense incorrect", "wrong spending code").to_string())?;
-        let seed: [u8; 32] = plain.as_slice().try_into().map_err(|_| "coffre illisible".to_string())?;
-        let seed = Zeroizing::new(seed);
-        // Vérification : la graine redonne bien l'adresse principale.
-        if address_of(&derive(&seed, 0)) != self.keys[0].0 {
-            return Err("coffre incohérent avec ce portefeuille".into());
-        }
-        Ok(seed)
+    }
+
+    /// Range la graine ouverte pour la prochaine opération (valable 2 minutes).
+    pub fn set_pre_seed(&mut self, seed: Zeroizing<[u8; 32]>) {
+        self.pre_seed = Some((std::time::Instant::now(), seed));
+    }
+
+    /// Efface la graine ouverte d'avance (toujours appelé après l'opération).
+    pub fn clear_pre_seed(&mut self) {
+        self.pre_seed = None;
     }
 
     /// Vérifie le code de dépense (sans rien faire d'autre).
@@ -614,21 +709,14 @@ impl Wallet {
 
     /// Change le mot de passe d'ouverture et/ou le code de dépense (il faut l'ancien code de dépense).
     pub fn change_passwords(&mut self, old_spend: &str, new_open: &str, new_spend: &str) -> Result<(), String> {
-        let seed = self.seed_with(Some(old_spend))?;
-        vault::check_password(new_open, vault::MIN_OPEN_PASSWORD, "Mot de passe d'ouverture")?;
-        vault::check_password(new_spend, vault::MIN_SPEND_CODE, "Code de dépense")?;
-        if new_open == new_spend {
-            return Err(crate::i18n::t("le code de dépense doit être différent du mot de passe d'ouverture", "the spending code must differ from the opening password").into());
-        }
-        let p = self.view.as_ref().map(|v| v.1).unwrap_or(vault::STRONG);
-        let vp = vault::vault_params(p);
-        let vault_salt: [u8; 32] = vault::random()?;
-        let vk = vault::derive_key(new_spend, &vault_salt, vp)?;
-        let new_vault = vault::seal(&vk, vp, vault_salt, b"coffre", seed.as_slice())?;
-        let view_salt: [u8; 32] = vault::random()?;
-        let view_key = vault::derive_key(new_open, &view_salt, p)?;
-        self.vault = Some(new_vault);
-        self.view = Some((view_key, p, view_salt));
+        let plan = self.spend_snapshot().prepare_change(old_spend, new_open, new_spend)?;
+        self.apply_change(plan)
+    }
+
+    /// Applique un changement préparé hors verrou (rapide : seule l'écriture du fichier reste à faire).
+    pub fn apply_change(&mut self, plan: ChangePlan) -> Result<(), String> {
+        self.vault = Some(plan.vault);
+        self.view = Some(plan.view);
         self.save()
     }
 
@@ -1169,5 +1257,24 @@ mod tests_indice_adresse {
             let mut l = Wallet::decode_view(&w2.encode_view()).unwrap();
             let _ = l.new_key();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_montant_lien {
+    use super::*;
+
+    #[test]
+    fn montant_du_lien_est_accepte_dans_le_formulaire() {
+        // Le formulaire « Envoyer » recevait « 1 NFR » depuis un lien nfr: et le refusait (« invalid amount »).
+        assert_eq!(format_amount_plain(MIN_UNIT), "1");
+        assert_eq!(parse_amount(&format_amount_plain(MIN_UNIT)).unwrap(), MIN_UNIT);
+        assert_eq!(parse_amount(&format_amount_plain(MIN_UNIT * 5 / 2)).unwrap(), MIN_UNIT * 5 / 2);
+        // Une unité écrite à la main est tolérée, mais pas n'importe quoi.
+        assert_eq!(parse_amount("1 NFR").unwrap(), MIN_UNIT);
+        assert_eq!(parse_amount("2,5 nfr").unwrap(), MIN_UNIT * 5 / 2);
+        assert!(parse_amount("NFR").is_err());
+        assert!(parse_amount("1 EUR").is_err());
+        assert!(parse_amount("é").is_err());
     }
 }

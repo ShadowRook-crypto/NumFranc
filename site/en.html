@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NumFranc (NFR) — English</title>
+<meta name="description" content="NumFranc: a post-quantum digital currency, mined by ordinary computers.">
+<link rel="alternate" hreflang="fr" href="index.html">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  :root {
+    --nuit: #002654; --or: #E1000F; --clair: #AFC8E6; --fond: #f4f6fa; --texte: #1b2233; --doux: #5d6578;
+    --carte: #ffffff; --bord: #dfe3ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --fond: #12151c; --texte: #e8ebf2; --doux: #a3aabb; --carte: #1c212b; --bord: #2c3342; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond); color: var(--texte); line-height: 1.6; }
+  header { background: var(--nuit); color: #fff; padding: 56px 16px 64px; text-align: center; }
+  header img { width: 120px; height: 120px; }
+  header h1 { font-size: 2.6rem; margin: 12px 0 4px; letter-spacing: .5px; }
+  header p { margin: 0 auto; max-width: 640px; color: #c9d3ea; font-size: 1.15rem; }
+  .bouton.secondaire { background: transparent; color: #fff; border: 2px solid var(--clair); margin-left: 8px; }
+  .bouton { display: inline-block; margin-top: 24px; background: var(--or); color: #FFFFFF; font-weight: 700; padding: 12px 26px; border-radius: 8px; text-decoration: none; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 48px; }
+  h2 { font-size: 1.6rem; margin: 40px 0 12px; }
+  .histoire { font-size: 1.08rem; max-width: 760px; }
+  .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .carte { background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; padding: 18px 20px; }
+  .carte h3 { margin: 0 0 6px; font-size: 1.08rem; }
+  .carte p { margin: 0; color: var(--doux); }
+  table { width: 100%; border-collapse: collapse; background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; overflow: hidden; }
+  td, th { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--bord); }
+  th { width: 40%; color: var(--doux); font-weight: 600; }
+  ol li { margin-bottom: 6px; }
+  .langue { position: absolute; top: 14px; right: 16px; }
+  .langue a { color: #c9d3ea; text-decoration: none; border: 1px solid #4a5f8a; border-radius: 6px; padding: 4px 10px; font-size: .9rem; }
+  header { position: relative; }
+  .systemes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .systemes .carte h3 { font-size: 1.2rem; }
+  .systemes .telecharge { display: inline-block; margin: 8px 0 10px; background: var(--nuit); color: #fff; font-weight: 700; padding: 9px 16px; border-radius: 8px; text-decoration: none; }
+  @media (prefers-color-scheme: dark) { .systemes .telecharge { background: #2c4a86; } }
+  .systemes ol { margin: 0; padding-left: 20px; color: var(--doux); }
+  .systemes small { color: var(--doux); display: block; margin-top: 8px; }
+  .avertissement { border-left: 4px solid var(--nuit); background: var(--carte); padding: 14px 18px; border-radius: 6px; color: var(--doux); }
+  footer { text-align: center; color: var(--doux); padding: 24px 16px 40px; font-size: .9rem; }
+  code { background: var(--carte); border: 1px solid var(--bord); border-radius: 4px; padding: 1px 6px; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <div class="langue"><a href="index.html" hreflang="fr" lang="fr">Français</a></div>
+  <img src="logo-256.png" alt="NumFranc logo: a navy N at the centre of a hexagon made of six turning blue and red bands">
+  <h1>NumFranc</h1>
+  <p>The digital currency designed for the post-quantum era, mined by ordinary computers.</p>
+  <a class="bouton" href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest">Download</a>
+  <a class="bouton secondaire" href="WHITEPAPER.pdf">White paper</a>
+</header>
+
+<main>
+  <h2>The story</h2>
+  <div class="histoire">
+    <p>Bitcoin showed that a currency can exist without a bank. But it has two well-known weaknesses: its signatures may one day be broken by a quantum computer, and its mining has become the business of factories full of specialised machines.</p>
+    <p>NumFranc started from a simple question: <em>what if we started over, fixing both problems from the very first block?</em> Every payment is signed with ML-DSA, the post-quantum standard chosen by NIST in 2024. And every mining attempt forces the computer to fill and re-read memory, which makes specialised machines almost useless: the PC in your bedroom counts as much as a factory's.</p>
+    <p>The logo tells this story: six blue and red bands turning around a hexagon, each handing over to the next, like the <strong>blocks</strong> of a chain added one after another. In the centre, the "N" of NumFranc.</p>
+  </div>
+
+  <h2>What makes it different</h2>
+  <div class="grille">
+    <div class="carte"><h3>Post-quantum from day one</h3><p>ML-DSA-87 signatures (NIST level 5) and SHA3-512 hashes.</p></div>
+    <div class="carte"><h3>Mining for everyone</h3><p>Memory-hungry Argon2d algorithm: an ordinary computer stays competitive.</p></div>
+    <div class="carte"><h3>Messages and vaults</h3><p>A message attached to each payment, and funds locked until a real calendar date.</p></div>
+    <div class="carte"><h3>Readable addresses</h3><p>A permanent 77-character address and its 4-word fingerprint to avoid mistakes.</p></div>
+    <div class="carte"><h3>Armoured wallet</h3><p>Encrypted twice, a separate code to spend, and a recovery code in 3 pieces (any 2 are enough).</p></div>
+    <div class="carte"><h3>No central server</h3><p>Computers find each other by themselves, on the local network or on the other side of the world.</p></div>
+  </div>
+
+  <h2>The numbers</h2>
+  <table>
+    <tr><th>Total supply</th><td>69,100,000 NFR, never one more</td></tr>
+    <tr><th>One block every</th><td>691 seconds (about 11 minutes)</td></tr>
+    <tr><th>Reward</th><td>6.91 NFR then 69.10 NFR per block, then −10% every 100,000 blocks</td></tr>
+    <tr><th>End of issuance</th><td>in about 98 years</td></tr>
+    <tr><th>Protection against 51% attacks</th><td>cumulative-work chain choice, rewrites limited to 10 blocks, checkpoints</td></tr>
+  </table>
+
+  <h2 id="telecharger">Download and install</h2>
+  <p>Pick your computer. No terminal, no commands: you double-click, that's all.</p>
+  <div class="systemes">
+    <div class="carte">
+      <h3>Mac</h3>
+      <a class="telecharge" href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest/download/NumFranc-macos.dmg">Download for Mac</a>
+      <ol>
+        <li>In "Downloads", double-click <code>NumFranc-macos.dmg</code>.</li>
+        <li>A window opens with an arrow: drag NumFranc onto <strong>Applications</strong>.</li>
+        <li>Open NumFranc from Launchpad, like any other app.</li>
+      </ol>
+      <small>The very first time, macOS may say the app "cannot be opened" (independent project, no Apple developer account): right-click NumFranc &gt; <strong>Open</strong> &gt; Open. Only once.</small>
+    </div>
+    <div class="carte">
+      <h3>Windows</h3>
+      <a class="telecharge" href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest/download/NumFranc-windows-installation.exe">Download for Windows</a>
+      <ol>
+        <li>In "Downloads", double-click <code>NumFranc-windows-installation.exe</code>.</li>
+        <li>Click "Next", then "Finish".</li>
+        <li>NumFranc is in the Start menu.</li>
+      </ol>
+      <small>Windows may show "Windows protected your PC" (we do not buy a paid certificate): click <strong>More info</strong> then <strong>Run anyway</strong>.</small>
+    </div>
+    <div class="carte">
+      <h3>Linux</h3>
+      <a class="telecharge" href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest/download/NumFranc-linux-amd64.deb">Download (PC)</a>
+      <a class="telecharge" href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest/download/NumFranc-linux-arm64.deb">Download (ARM)</a>
+      <ol>
+        <li>Double-click the <code>.deb</code> file in your file manager (Ubuntu, Debian, Mint…).</li>
+        <li>Click "Install".</li>
+        <li>Open NumFranc from the applications menu.</li>
+      </ol>
+      <small>From the command line: <code>sudo apt install ./NumFranc-linux-amd64.deb</code></small>
+    </div>
+  </div>
+  <h3>On first launch</h3>
+  <ol>
+    <li>Choose your two passwords, and copy the 3 pieces of your recovery code onto 3 separate papers.</li>
+    <li>NumFranc adds itself to the applications menu and enables <code>nfr:</code> payment links, by itself.</li>
+    <li>It opens the port on your router by itself and looks for other computers: the status is in Settings &gt; Connection.</li>
+    <li>Your computer joins the network and starts mining.</li>
+  </ol>
+  <p>For the curious: every version is signed with a post-quantum key (SLH-DSA). The hash list <code>SHA3SUMS.txt</code> and its signature <code>SHA3SUMS.txt.sig</code> are on the <a href="https://github.com/ShadowRook-crypto/NumFranc/releases/latest">releases page</a>, with the public key: <code>5e1d1c80fdd07d3bc4095f45a05649fc006bce347609b1566b3c25e940881736</code>. <code>NumFranc.zip</code> also contains the code and a verification tool.</p>
+
+  <h2>White paper</h2>
+  <p>How NumFranc works, with the technical appendices: <a href="WHITEPAPER.pdf">in English</a> · <a href="LIVRE_BLANC.pdf">en français</a>.</p>
+
+  <p class="avertissement">No NFR is for sale and no value is promised.</p>
+</main>
+
+<footer>
+  NumFranc — open code, verifiable by anyone on <a href="https://github.com/ShadowRook-crypto/NumFranc">GitHub</a>. The name and logo are not linked to any state or bank. <small>NumFranc has no connection with FrancNum.</small>
+</footer>
+</body>
+</html>
