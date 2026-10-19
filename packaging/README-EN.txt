@@ -6,14 +6,17 @@ NumFranc (NFR) — user guide (English)
    Download the installer for your system from the releases page
    (https://github.com/ShadowRook-crypto/NumFranc/releases/latest), then open your "Downloads" folder:
    - Mac:     double-click NumFranc-macos.dmg, drag NumFranc onto Applications, open it from Launchpad.
-              The very first time, if macOS refuses: right-click NumFranc > Open > Open (only once).
+              The very first time, macOS shows "Not Opened" (independent project, no Apple developer account).
+              Click "Done", then System Settings > Privacy & Security, at the very bottom:
+              "Open Anyway" (Mac password), then "Open". Only once.
+              (macOS 14 and older: right-click NumFranc > Open > Open is enough.)
    - Windows: double-click NumFranc-windows-installation.exe, then "Next". If Windows shows "Windows protected
               your PC": More info > Run anyway. NumFranc is then in the Start menu.
    - Linux:   double-click NumFranc-linux-amd64.deb (or -arm64.deb), then "Install"
               (or: sudo apt install ./NumFranc-linux-amd64.deb). NumFranc is in the applications menu.
    On first launch NumFranc adds itself to the applications menu and enables nfr: payment links.
-   Without the installer (this folder, NumFranc.zip): Mac "Lancer NumFranc.command" (right-click > Open the first
-   time), Windows "Lancer NumFranc.bat", Linux ./lancer-numfranc.sh in a terminal.
+   Without the installer (this folder, NumFranc.zip): Mac "Lancer NumFranc.command" (the first time macOS blocks it: System Settings >
+   Privacy & Security > "Open Anyway"; macOS 14 and older: right-click > Open), Windows "Lancer NumFranc.bat", Linux ./lancer-numfranc.sh in a terminal.
 
 2. FIRST LAUNCH
    You choose TWO different secrets: the OPENING PASSWORD (12+ characters, asked at every start: see balance,
@@ -27,7 +30,7 @@ NumFranc (NFR) — user guide (English)
 
 3. JOINING THE NETWORK
    Nothing to set up. NumFranc finds other computers by itself (local network, then the world directory) and asks
-   your router to open port 6910 (UPnP, then NAT-PMP) so that others can connect to you too. The status is shown
+   your router to open port 6910 (UPnP, NAT-PMP, PCP) so that others can connect to you too. The status is shown
    on the home screen and in Settings > Connection, with the reason and what to do if it fails (UPnP turned off
    on the router, Internet address shared by your provider, ...). NumFranc works even without the open port:
    it connects to others. To add a node by hand: put its address in noeuds.txt (e.g. mynode.example:6910).
@@ -39,6 +42,9 @@ NumFranc (NFR) — user guide (English)
    Each address has a 4-word fingerprint + a colour (e.g. "jasmin gorille horloge jonque - red"):
    check it with the other person (by phone, for instance) before saving their address.
    A payment link nfr:... opens NumFranc on "Send", already filled in. Nothing is sent without your spending code.
+   Languages (v1.1.1): French, English, Spanish, German, Italian, Portuguese - Settings > Language. The system language is
+   used on first launch when supported. Translations are machine-made: corrections are welcome.
+   If your router cannot open the port by itself, Settings > Connection shows a step-by-step guide (works with any router).
 
 5. GOOD TO KNOW
    - A mining reward becomes spendable after 100 blocks; a payment is safe after 6 blocks.

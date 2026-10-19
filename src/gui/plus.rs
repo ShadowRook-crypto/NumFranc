@@ -616,7 +616,7 @@ impl App {
                 ui.label("NFR   ");
                 ui.label(t("délai", "delay"));
                 ui.add(egui::TextEdit::singleline(&mut self.plus.prot_delay).desired_width(70.0));
-                ui.label(RichText::new(t("ex. 30min, 12h, 1j, 1sem (max 30 j)", "e.g. 30min, 12h, 1j, 1sem (max 30 d)")).color(p.grey));
+                ui.label(RichText::new(t("ex. 30min, 12h, 1j, 1sem (max 30 j)", "e.g. 30min, 12h, 1d, 1w (max 30 d)")).color(p.grey));
             });
             ui.horizontal(|ui| {
                 ui.label(t("Gardien (facultatif)", "Guardian (optional)"));

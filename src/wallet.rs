@@ -264,20 +264,20 @@ pub fn parse_address(s: &str) -> Result<Address, String> {
     Ok(addr)
 }
 
-/// Lit une durée « 30min », « 12h », « 3j », « 2sem », « 1mois », « 1an » et la convertit en secondes.
+/// Lit une durée « 30min », « 12h », « 3j », « 2sem », « 1mois », « 1an » (ou 3d, 2w, 1mo, 1y) et la convertit en secondes.
 pub fn parse_lock_duration(s: &str) -> Result<u64, String> {
     let s = s.trim().to_lowercase();
     let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
     let unit = &s[digits.len()..];
-    let n: u64 = digits.parse().map_err(|_| crate::i18n::t("durée invalide (exemples : 30min, 12h, 3j, 2sem, 1mois, 1an)", "invalid duration (examples: 30min, 12h, 3j, 2sem, 1mois, 1an)"))?;
+    let n: u64 = digits.parse().map_err(|_| crate::i18n::t("durée invalide (exemples : 30min, 12h, 3j, 2sem, 1mois, 1an)", "invalid duration (examples: 30min, 12h, 3d, 2w, 1mo, 1y)"))?;
     let secs_per_unit = match unit {
         "min" => 60,
         "h" => 3_600,
-        "j" => 86_400,
-        "sem" => 7 * 86_400,
-        "mois" => 30 * 86_400,
-        "an" | "ans" => 365 * 86_400,
-        _ => return Err(crate::i18n::t("unité inconnue : utilisez min, h, j, sem, mois ou an", "unknown unit: use min, h, j (days), sem (weeks), mois (months) or an (years)").into()),
+        "j" | "d" => 86_400,
+        "sem" | "w" => 7 * 86_400,
+        "mois" | "mo" => 30 * 86_400,
+        "an" | "ans" | "y" => 365 * 86_400,
+        _ => return Err(crate::i18n::t("unité inconnue : utilisez min, h, j, sem, mois ou an", "unknown unit: use min, h, d (days), w (weeks), mo (months) or y (years)").into()),
     };
     let secs = n.checked_mul(secs_per_unit).ok_or(crate::i18n::t("durée trop grande", "duration too large"))?;
     if n == 0 {
@@ -330,7 +330,7 @@ pub fn format_amount(units: u64) -> String {
         format!("{whole} NFR")
     } else {
         let f = format!("{frac:08}");
-        let sep = if crate::i18n::en() { '.' } else { ',' };
+        let sep = crate::i18n::decimal_sep();
         format!("{whole}{sep}{} NFR", f.trim_end_matches('0'))
     }
 }

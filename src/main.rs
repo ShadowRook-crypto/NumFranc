@@ -532,7 +532,7 @@ fn main() {
     println!("Données : {}", opts.data_dir.display());
     let has = |flag: &str| std::env::args().any(|a| a == flag);
     let settings = numfranc::settings::Settings::load(&opts.data_dir);
-    numfranc::i18n::set_english(settings.english);
+    numfranc::i18n::set_lang(settings.lang);
 
     if has("--menu") {
         match numfranc::install::add_to_menu(&opts.data_dir) {

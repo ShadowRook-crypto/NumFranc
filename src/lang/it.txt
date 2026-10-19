@@ -1,0 +1,508 @@
+# NumFranc — it : anglais <tab> traduction. \n = retour à la ligne. Les {trous} restent identiques.
+Old chain (different rules) moved aside to {}: new NumFranc v0.6 chain.	Vecchia catena (regole diverse) spostata in {}: nuova catena NumFranc v0.6.
+Details: Settings > Connection.	Dettagli: Impostazioni > Connessione.
+Guide: open the port by hand	Guida: aprire la porta a mano
+Open my router's page ({b})	Apri la pagina del mio router ({b})
+Router address not found: it is often printed under the router (for example 192.168.1.1).	Indirizzo del router non trovato: di solito è stampato sotto il router (per esempio 192.168.1.1).
+Port to forward (TCP):	Porta da inoltrare (TCP):
+Copy	Copia
+This computer's address:	Indirizzo di questo computer:
+I opened the port myself	Ho aperto la porta da solo
+Opening password	Password di apertura
+Spending code	Codice di spesa
+the two opening passwords differ	le due password di apertura non coincidono
+the two spending codes differ	i due codici di spesa non coincidono
+the spending code must differ from the opening password	il codice di spesa deve essere diverso dalla password di apertura
+Schedule: night mining ({cores} core(s)).	Orario: mining notturno ({cores} core).
+Schedule: day mining ({cores} core(s)).	Orario: mining diurno ({cores} core).
+Payment link received: check before sending.	Link di pagamento ricevuto: controllalo prima di inviare.
+Error: {e}	Errore: {e}
+block #{lock}	blocco n. {lock}
+Post-quantum digital currency	Moneta digitale post-quantistica
+Welcome	Benvenuto
+No wallet on this computer.	Nessun portafoglio su questo computer.
+Create a new wallet	Crea un nuovo portafoglio
+Restore a wallet with my recovery code	Ripristina un portafoglio con il mio codice di recupero
+1. Opening password	1. Password di apertura
+Asked at every start. It lets you see your balance, mine and receive. At least 12 characters, with 3 kinds of characters (lowercase, uppercase, digits, symbols).	Richiesta a ogni avvio. Permette di vedere il saldo, fare mining e ricevere. Almeno 12 caratteri, con 3 tipi di caratteri (minuscole, maiuscole, cifre, simboli).
+Type it again	Scrivila di nuovo
+2. Spending code (different!)	2. Codice di spesa (diverso!)
+Asked for every NFR payment. It protects the secret key: without it nobody can spend, even with your computer unlocked. At least 16 characters. Safest: 4 or 5 random words with a digit and a symbol (e.g. Giraffe#Drum-Cloud7).	Richiesto a ogni pagamento in NFR. Protegge la chiave segreta: senza di esso nessuno può spendere, nemmeno con il tuo computer sbloccato. Almeno 16 caratteri. Più sicuro: 4 o 5 parole casuali con una cifra e un simbolo (es. Giraffa#Tamburo-Nuvola7).
+Passwords accepted.	Password accettate.
+New wallet	Nuovo portafoglio
+Back	Indietro
+Create the wallet	Crea il portafoglio
+Creating and encrypting the wallet (a few seconds)…	Creazione e cifratura del portafoglio (alcuni secondi)…
+Protect your wallet	Proteggi il tuo portafoglio
+Your wallet comes from an older version: it is not encrypted yet. Choose your two passwords: it will be encrypted twice (AES-256 + XChaCha20), then you will get your recovery code in 3 pieces.	Il tuo portafoglio proviene da una versione precedente: non è ancora cifrato. Scegli le tue due password: sarà cifrato due volte (AES-256 + XChaCha20), poi riceverai il codice di recupero in 3 parti.
+Encrypt my wallet	Cifra il mio portafoglio
+Encrypting the wallet (a few seconds)…	Cifratura del portafoglio (alcuni secondi)…
+Restore a wallet	Ripristina un portafoglio
+Type 2 of the 3 pieces of your recovery code (NFRS-…), in any order.	Scrivi 2 delle 3 parti del tuo codice di recupero (NFRS-…), in qualsiasi ordine.
+Piece A	Parte A
+Piece B	Parte B
+Or the old full 64-character code (versions 0.1 to 0.3):	Oppure il vecchio codice completo di 64 caratteri (versioni da 0.1 a 0.3):
+Restore	Ripristina
+Restoring and encrypting (a few seconds)…	Ripristino e cifratura (alcuni secondi)…
+Open my wallet	Apri il mio portafoglio
+Too many attempts: wait {s} s.	Troppi tentativi: attendi {s} s.
+Open	Apri
+Checking the password…	Controllo della password…
+Forgot the password? Restore with 2 pieces of the recovery code	Hai dimenticato la password? Ripristina con 2 parti del codice di recupero
+Your recovery code, in 3 pieces	Il tuo codice di recupero, in 3 parti
+Copy each piece onto a DIFFERENT sheet of paper and keep them in 3 different places (at home, at your parents', in another safe place).	Copia ogni parte su un foglio di carta DIVERSO e conservali in 3 posti diversi (a casa, dai tuoi genitori, in un altro luogo sicuro).
+• 2 pieces out of 3 are enough to recover everything, even if you forget your passwords.	• Bastano 2 parti su 3 per recuperare tutto, anche se dimentichi le password.
+• A single piece is useless to a thief. Losing one piece loses nothing.	• Una sola parte è inutile per un ladro. Perdere una parte non fa perdere nulla.
+• Never photograph them, never send them to anyone, never paste them into any conversation.	• Non fotografarle mai, non inviarle a nessuno, non incollarle in nessuna conversazione.
+Piece {}	Parte {}
+I copied the 3 pieces onto 3 different sheets of paper	Ho copiato le 3 parti su 3 fogli di carta diversi
+Continue	Continua
+could not start the node: {e}	impossibile avviare il nodo: {e}
+More…	Altro…
+Settings	Impostazioni
+looking for other nodes…	ricerca di altri nodi…
+{} peer(s)	{} peer
+Block #{}  ·  {txt}	Blocco n. {}  ·  {txt}
+mining stopped	mining fermo
+mining: syncing…	mining: sincronizzazione…
+mining: {} tries/s	mining: {} tentativi/s
+A few words before you start	Qualche parola prima di iniziare
+Got it	Ho capito
+Available balance	Saldo disponibile
+Maturing (mining rewards, 100 blocks)	In maturazione (ricompense di mining, 100 blocchi)
+Locked (unlock date)	Bloccato (data di sblocco)
+Being sent	In invio
+Mining	Mining
+Schedule on: night mode	Orario attivo: modalità notte
+Schedule on: day mode	Orario attivo: modalità giorno
+Mine with this computer	Fai mining con questo computer
+Mining started.	Mining avviato.
+Mining stopped.	Mining fermato.
+cores	core
+Speed: {} tries per second	Velocità: {} tentativi al secondo
+Each try fills 4 MiB of memory (Argon2d). More cores = more chances, but more heat and noise.	Ogni tentativo riempie 4 MiB di memoria (Argon2d). Più core = più probabilità, ma anche più calore e rumore.
+Network	Rete
+Current block: #{}  ({}…)	Blocco attuale: n. {}  ({}…)
+NFR issued: {} out of 69,100,000	NFR emessi: {} su 69.100.000
+Connected peers: {}	Peer connessi: {}
+Log	Registro
+Mining earnings	Guadagni del mining
+{d} days	{d} giorni
+Total: {} in {} block(s) found	Totale: {} in {} blocco/i trovato/i
+{label}: {} ({count} block(s))	{label}: {} ({count} blocco/i)
+Your permanent address	Il tuo indirizzo permanente
+Single-use address	Indirizzo monouso
+Always the same: you can give it to everyone.	Sempre lo stesso: puoi darlo a tutti.
+Give it to one person only, for more privacy.	Daglielo a una sola persona, per più privacy.
+Fingerprint (check it with the sender):	Impronta (verificala con il mittente):
+Copy the address	Copia l'indirizzo
+address copied	indirizzo copiato
+New single-use address	Nuovo indirizzo monouso
+Back to the permanent address	Torna all'indirizzo permanente
+Hide the QR code	Nascondi il codice QR
+Show the QR code	Mostra il codice QR
+Send NFR	Invia NFR
+Recipient: a contact name, an NFR1-… address, a name (alice.nfr) or an nfr:… payment link	Destinatario: un nome di contatto, un indirizzo NFR1-…, un nome (alice.nfr) o un link di pagamento nfr:…
+NFR1-… or a contact name	NFR1-… o un nome di contatto
+Contacts	Contatti
+{n} — in your contacts	{n} — nei tuoi contatti
+Warning: this address is not in your contacts: check the fingerprint above with the recipient (by phone for example). A virus can replace a copied address.	Attenzione: questo indirizzo non è nei tuoi contatti: verifica l'impronta qui sopra con il destinatario (per esempio per telefono). Un virus può sostituire un indirizzo copiato.
+Amount	Importo
+e.g. 12.5	es. 12,5
+(available: {})	(disponibile: {})
+Attached message (optional, PUBLIC and engraved forever in the chain)	Messaggio allegato (facoltativo, PUBBLICO e inciso per sempre nella catena)
+{mb} / {MAX_MEMO} bytes (accented letters count double)	{mb} / {MAX_MEMO} byte (le lettere accentate contano doppio)
+Lock until a date	Blocca fino a una data
+e.g. 30min, 12h, 3d, 2w, 1mo, 1y	es. 30min, 12h, 3d, 2w, 1mo, 1y
+The recipient can spend from {when} (about 1 h margin). Nobody can unlock it before.	Il destinatario potrà spendere dal {when} (con circa 1 h di margine). Nessuno può sbloccarlo prima.
+Spending code (to sign)	Codice di spesa (per firmare)
+Sign and send	Firma e invia
+Opening the vault (a few seconds) then post-quantum signature…	Apertura della cassaforte (alcuni secondi), poi firma post-quantistica…
+{} sent to {who} (fee {}). Wait 6 blocks for it to be safe.	{} inviati a {who} (commissione {}). Attendi 6 blocchi per essere al sicuro.
+Payment history	Cronologia dei pagamenti
+Export to spreadsheet (CSV)	Esporta in foglio di calcolo (CSV)
+History saved: {}	Cronologia salvata: {}
+No payments yet (mining rewards are not listed).	Ancora nessun pagamento (le ricompense di mining non sono elencate).
+block #{}	blocco n. {}
+Received	Ricevuto
+Sent	Inviato
+Vault	Cassaforte
+locked until {}	bloccato fino al {}
+Save an address once, after checking its fingerprint with the person. The contacts are encrypted with your wallet.	Salva un indirizzo una volta, dopo aver verificato la sua impronta con la persona. I contatti sono cifrati con il tuo portafoglio.
+Your contacts are empty.	I tuoi contatti sono vuoti.
+Send	Invia
+Delete	Elimina
+Add a contact	Aggiungi un contatto
+Name	Nome
+e.g. Mom	es. Mamma
+Address	Indirizzo
+Fingerprint (check it with the person):	Impronta (verificala con la persona):
+Add to contacts	Aggiungi ai contatti
+Block explorer	Esplora blocchi
+Go to block	Vai al blocco
+« Newer	« Più recenti
+Older »	Più vecchi »
+Latest block	Ultimo blocco
+Block	Blocco
+Date	Data
+Transactions	Transazioni
+Reward	Ricompensa
+Miner	Miner
+you	tu
+Block #{sel}	Blocco n. {sel}
+Hash	Hash
+Previous block	Blocco precedente
+Difficulty	Difficoltà
+target with {zeros} leading zero bits (≈ 2^{zeros} Argon2d tries)	obiettivo con {zeros} bit zero iniziali (≈ 2^{zeros} tentativi Argon2d)
+Size	Dimensione
+{} bytes	{} byte
+Mining reward	Ricompensa di mining
+Payment	Pagamento
+{} input(s) signed with ML-DSA-87{}	{} input firmato/i con ML-DSA-87{}
+ — sent by you	 — inviato da te
+(you)	(tu)
+Message: “{}”	Messaggio: “{}”
+Local port: {}	Porta locale: {}
+Other nodes are found automatically: local network, then world directory.	Gli altri nodi vengono trovati automaticamente: rete locale, poi elenco mondiale.
+Unknown connections silently blocked (bots scanning the Internet): {}	Connessioni sconosciute bloccate in silenzio (robot che scandagliano Internet): {}
+Connected peers	Peer connessi
+No peer yet: still searching.	Ancora nessun peer: ricerca in corso.
+outgoing	in uscita
+incoming	in entrata
+block #{h}	blocco n. {h}
+host:port	host:porta
+Connect	Connetti
+Your wallet's protections	Le protezioni del tuo portafoglio
+• File encrypted twice: AES-256-GCM then XChaCha20-Poly1305 (512 key bits in total).	• File cifrato due volte: AES-256-GCM poi XChaCha20-Poly1305 (512 bit di chiave in totale).
+• Keys derived from your passwords with Argon2id: 256 MiB per try for opening, 1 GiB and 4 passes for the spending code. Every guess is expensive, even for a thief who copied the file.	• Chiavi derivate dalle tue password con Argon2id: 256 MiB per tentativo per l'apertura, 1 GiB e 4 passaggi per il codice di spesa. Ogni tentativo costa caro, anche per un ladro che ha copiato il file.
+• Your passwords are stored nowhere, not even encrypted: they are only used to build the keys.	• Le tue password non sono salvate da nessuna parte, nemmeno cifrate: servono solo a costruire le chiavi.
+• Post-quantum ML-DSA-87 signatures (NIST level 5).	• Firme post-quantistiche ML-DSA-87 (livello 5 del NIST).
+Recovery code (3 pieces)	Codice di recupero (3 parti)
+2 pieces out of 3 are enough. They are always the same pieces.	Bastano 2 parti su 3. Sono sempre le stesse parti.
+Piece {}: {x}	Parte {}: {x}
+Hide the pieces	Nascondi le parti
+Show the 3 pieces	Mostra le 3 parti
+Opening the vault…	Apertura della cassaforte…
+Change the passwords	Cambia le password
+CURRENT spending code	Codice di spesa ATTUALE
+Change	Cambia
+Re-encrypting the wallet…	Ricifratura del portafoglio…
+passwords changed	password cambiate
+Appearance	Aspetto
+Language	Lingua
+Theme	Tema
+Light	Chiaro
+Dark	Scuro
+Main colour	Colore principale
+Scheduled mining	Mining programmato
+For example: full speed at night when nobody uses the computer, gently (or not at all) during the day.	Per esempio: a piena velocità di notte, quando nessuno usa il computer, piano (o per niente) di giorno.
+Enable the schedule	Attiva l'orario
+Night from	Notte dalle
+to	alle
+cores at night (0 = off)	core di notte (0 = spento)
+cores during the day (0 = off)	core di giorno (0 = spento)
+Connection	Connessione
+Updates	Aggiornamenti
+Installed version: {}. The check downloads the signed list of the latest version and verifies its signature before offering it.	Versione installata: {}. Il controllo scarica l'elenco firmato dell'ultima versione e ne verifica la firma prima di proporla.
+Checking…	Controllo in corso…
+Check for updates	Cerca aggiornamenti
+Version {v} available — author's signature verified	Versione {v} disponibile — firma dell'autore verificata
+Open the download page	Apri la pagina di download
+NumFranc is up to date.	NumFranc è aggiornato.
+Expert mode	Modalità esperto
+When off, NumFranc only shows the essentials. When on, every tab appears: Explorer, Issuance, Advanced and Network.	Se disattivata, NumFranc mostra solo l'essenziale. Se attivata, compaiono tutte le schede: Esplora, Emissione, Avanzate e Rete.
+Turn on expert mode	Attiva la modalità esperto
+Shortcut	Scorciatoia
+Add NumFranc to the applications menu: launch it with one click, without a Terminal.	Aggiungi NumFranc al menu delle applicazioni: avvialo con un clic, senza Terminale.
+Add NumFranc to the applications menu	Aggiungi NumFranc al menu delle applicazioni
+NumFranc — MIT licence, no warranty. No connection with FrancNum.	NumFranc — licenza MIT, senza garanzia. Nessun legame con FrancNum.
+Issuance dashboard	Pannello di emissione
+Computed by YOUR node from the protocol rules: nobody can lie to you about how many NFR exist.	Calcolato dal TUO nodo a partire dalle regole del protocollo: nessuno può mentirti su quanti NFR esistono.
+NFR already created: 	NFR già creati: 
+NFR left to create: 	NFR ancora da creare: 
+Next block reward: 	Ricompensa del prossimo blocco: 
+Current tier: 	Fascia attuale: 
+Next tier: 	Prossima fascia: 
+in {} blocks (about {} days), reward {}	tra {} blocchi (circa {} giorni), ricompensa {}
+The next tiers	Le prossime fasce
+Tier	Fascia
+Blocks	Blocchi
+Total created at end	Totale creato alla fine
+Tier 0: soft start at 6.91 NFR; tier 1: peak at 69.10 NFR; then −10 % each tier. Fixed cap: 69,100,000 NFR.	Fascia 0: partenza dolce a 6,91 NFR; fascia 1: picco a 69,10 NFR; poi −10 % a ogni fascia. Tetto fisso: 69.100.000 NFR.
+Explanation mode	Modalità spiegazione
+Pick a block, then go step by step: you will see what your computer checks before accepting a block or a payment. It changes nothing, it is only to learn.	Scegli un blocco e procedi passo dopo passo: vedrai cosa controlla il tuo computer prima di accettare un blocco o un pagamento. Non cambia nulla, serve solo a imparare.
+Block #	Blocco n.
+A block	Un blocco
+A transaction	Una transazione
+Block not found.	Blocco non trovato.
+Previous	Precedente
+Step {} of {}	Passo {} di {}
+Next	Successivo
+1. The header of block #{h}	1. L'intestazione del blocco n. {h}
+A block is a ledger page. Its header (212 bytes) sums up the whole block in six fields:	Un blocco è una pagina del libro mastro. La sua intestazione (212 byte) riassume tutto il blocco in sei campi:
+previous block	blocco precedente
+time	ora
+target	obiettivo
+2. The block's fingerprint (its “name”)	2. L'impronta del blocco (il suo «nome»)
+The 212 header bytes go twice through SHA3-512. The 64-byte result is the block's name: changing ONE bit of the header gives a completely different name.	I 212 byte dell'intestazione passano due volte per SHA3-512. Il risultato di 64 byte è il nome del blocco: cambiare UN solo bit dell'intestazione dà un nome completamente diverso.
+fingerprint	impronta
+OK : The “previous block” is indeed block #(n−1): that is what forms the chain.	OK : Il «blocco precedente» è davvero il blocco n. (n−1): è questo che forma la catena.
+ERREUR : The previous block does not match.	ERRORE : Il blocco precedente non corrisponde.
+3. Proof of work	3. Prova di lavoro
+To propose a block, a miner had to try billions of nonces. Each try computes Argon2d, a function that needs 4 MiB of memory (it favours ordinary computers). The block is only valid if the result, read as a big number, is SMALLER than the target. Checking takes ONE computation.	Per proporre un blocco, un miner ha dovuto provare miliardi di nonce. Ogni tentativo calcola Argon2d, una funzione che richiede 4 MiB di memoria (favorisce i computer normali). Il blocco è valido solo se il risultato, letto come un numero grande, è PIÙ PICCOLO dell'obiettivo. Verificarlo richiede UN solo calcolo.
+Argon2d result	risultato di Argon2d
+OK : result < target: the work is proven.	OK : risultato < obiettivo: il lavoro è dimostrato.
+(the result starts with {zeros} hexadecimal zeros)	(il risultato inizia con {zeros} zeri esadecimali)
+4. The Merkle root	4. La radice di Merkle
+Each transaction has an identifier (txid). They are paired two by two and hashed again, and so on until one is left: the Merkle root, written in the header. Changing a transaction changes the root, hence the block's fingerprint, hence the proof of work collapses.	Ogni transazione ha un identificatore (txid). Vengono accoppiati a due a due e sottoposti di nuovo a hash, e così via fino a che ne resta uno: la radice di Merkle, scritta nell'intestazione. Cambiare una transazione cambia la radice, quindi l'impronta del blocco, e la prova di lavoro crolla.
+recomputed root	radice ricalcolata
+OK : same as the header	OK : uguale a quella dell'intestazione
+5. The block's transactions	5. Le transazioni del blocco
+The first transaction (“coinbase”) creates the miner's reward: no input, its outputs equal the tier reward + the other transactions' fees. The others move existing coins.	La prima transazione («coinbase») crea la ricompensa del miner: senza input, i suoi output equivalgono alla ricompensa della fascia più le commissioni delle altre transazioni. Le altre spostano monete già esistenti.
+coinbase (reward)	coinbase (ricompensa)
+payment	pagamento
+Expected reward for this block: {}	Ricompensa prevista per questo blocco: {}
+6. The verdict	6. Il verdetto
+Your node accepts the block only if EVERYTHING holds: the link to the previous block, the proof of work, the Merkle root, the size, the exact reward and every transaction (valid signatures, unspent coins, correct amounts). Any flaw and the block is thrown away, even from a “trusted” peer.	Il tuo nodo accetta il blocco solo se TUTTO è a posto: il legame con il blocco precedente, la prova di lavoro, la radice di Merkle, la dimensione, la ricompensa esatta e ogni transazione (firme valide, monete non spese, importi corretti). Al minimo difetto il blocco viene scartato, anche se proviene da un peer «fidato».
+Now switch to “A transaction” to see what that means for a payment.	Passa ora a «Una transazione» per vedere cosa significa per un pagamento.
+Transaction #	Transazione n.
+1. Inputs: where the money comes from	1. Input: da dove arriva il denaro
+An input points to one specific coin (an output of an older transaction) that the sender spends entirely. If it is worth more than the payment, the difference comes back as “change”.	Un input punta a una moneta precisa (un output di una transazione precedente) che chi invia spende interamente. Se vale più del pagamento, la differenza torna indietro come «resto».
+This is a coinbase: it has no input, it CREATES the miner's reward.	Questa è una coinbase: non ha input, CREA la ricompensa del miner.
+(origin older than the last 2000 blocks)	(origine precedente agli ultimi 2000 blocchi)
+input	input
+2. Outputs: where the money goes	2. Output: dove va il denaro
+Each output creates a new coin for an address. It can be locked until a date, or “retained”: the sender can then cancel it before that date.	Ogni output crea una nuova moneta per un indirizzo. Può essere bloccato fino a una data o «trattenuto»: chi invia può allora annullarlo prima di quella data.
+lock	blocco
+cancellable	annullabile
+output	output
+name	nome
+3. The fee	3. La commissione
+Fee = total inputs − total outputs. The miner keeps it: the higher, the faster the payment is served. Forbidden: outputs > inputs (that would create money).	Commissione = totale input − totale output. La trattiene il miner: più è alta, più in fretta viene servito il pagamento. Vietato: output > input (creerebbe denaro).
+A coinbase has no fee: its value is controlled by the issuance rule.	Una coinbase non ha commissione: il suo valore è controllato dalla regola di emissione.
+inputs	input
+outputs	output
+fee	commissione
+(an input's origin is missing to compute)	(manca l'origine di un input per calcolarlo)
+4. The post-quantum signature	4. La firma post-quantistica
+To prove the right to spend, the sender signs the transaction with their secret key (ML-DSA-87, FIPS 204). They attach their public key (2,592 bytes) and the signature (4,627 bytes). The address is just the SHA3-512 fingerprint of the public key: your node checks (a) that the public key's fingerprint is the coin's address, (b) that the signature is valid. A quantum computer does not break this kind of signature.	Per dimostrare il diritto di spendere, chi invia firma la transazione con la sua chiave segreta (ML-DSA-87, FIPS 204). Allega la sua chiave pubblica (2.592 byte) e la firma (4.627 byte). L'indirizzo è solo l'impronta SHA3-512 della chiave pubblica: il tuo nodo verifica (a) che l'impronta della chiave pubblica sia l'indirizzo della moneta, (b) che la firma sia valida. Un computer quantistico non rompe questo tipo di firma.
+group {} of {} — {} signature(s)	gruppo {} di {} — {} firma/e
+public key	chiave pubblica
+signature	firma
+address	indirizzo
+A coinbase has no signature.	Una coinbase non ha firma.
+5. What is signed	5. Cosa viene firmato
+The signatures themselves are not signed: a “digest” (sighash) of everything else in the transaction is (coins spent, recipients, amounts, message). If anyone changes the amount or address on the way, the signature no longer matches and the transaction is rejected.	Le firme stesse non vengono firmate: si firma un «riassunto» (sighash) di tutto il resto della transazione (monete spese, destinatari, importi, messaggio). Se qualcuno cambia l'importo o l'indirizzo lungo il percorso, la firma non corrisponde più e la transazione viene rifiutata.
+6. The identifier (txid) and size	6. L'identificatore (txid) e la dimensione
+The txid is the (double) SHA3-512 fingerprint of the complete transaction. It goes into the Merkle tree, and future coins cite it to spend this one's outputs.	Il txid è l'impronta SHA3-512 (doppia) della transazione completa. Entra nell'albero di Merkle e le monete future lo citano per spendere gli output di questa.
+size	dimensione
+{} bytes (a post-quantum signature is heavy: that is why fees depend on size)	{} byte (una firma post-quantistica è pesante: per questo le commissioni dipendono dalla dimensione)
+Done.	Fatto.
+Advanced features	Funzioni avanzate
+The spending code below is used by this tab's operations that sign or open the vault.	Il codice di spesa qui sotto è usato dalle operazioni di questa scheda che firmano o aprono la cassaforte.
+Wallet freeze	Congelamento del portafoglio
+FROZEN: nothing can be sent from this computer, even with your passwords. Receiving and mining continue.	CONGELATO: da questo computer non si può inviare nulla, nemmeno con le tue password. Ricezione e mining continuano.
+To unfreeze you need ALL THREE codes: opening password, a new spending code, and two recovery pieces.	Per scongelare servono TUTTI E TRE i codici: password di apertura, un nuovo codice di spesa e due parti di recupero.
+NEW spending code	NUOVO codice di spesa
+Recovery piece 1	Parte di recupero 1
+Recovery piece 2	Parte di recupero 2
+Unfreeze	Scongela
+Unfreezing (a few seconds)…	Scongelamento (alcuni secondi)…
+Wallet unfrozen. Your new spending code is active.	Portafoglio scongelato. Il tuo nuovo codice di spesa è attivo.
+Freeze your wallet when travelling or when you do not need to spend: the secret key is ERASED from this computer. A thief with even both passwords could send nothing.	Congela il tuo portafoglio quando viaggi o non hai bisogno di spendere: la chiave segreta viene CANCELLATA da questo computer. Un ladro, anche con entrambe le password, non potrebbe inviare nulla.
+Make sure you have your recovery pieces: without them, unfreezing is impossible.	Assicurati di avere le tue parti di recupero: senza di esse non si può scongelare.
+Freeze the wallet	Congela il portafoglio
+Freezing (a few seconds)…	Congelamento (alcuni secondi)…
+Wallet frozen.	Portafoglio congelato.
+Cancellation delay for large payments	Termine di annullamento per pagamenti grandi
+Above the chosen amount, each payment is HELD: the recipient can only spend it after the delay, and you (or a trusted “guardian”) can cancel it until then. If a thief sends to a wrong address or drains your wallet, you have time to react.	Oltre l'importo scelto, ogni pagamento viene TRATTENUTO: il destinatario può spenderlo solo dopo il termine, e tu (o un «custode» di fiducia) puoi annullarlo fino ad allora. Se un ladro invia a un indirizzo sbagliato o svuota il tuo portafoglio, hai il tempo di reagire.
+From	Da
+delay	termine
+e.g. 30min, 12h, 1d, 1w (max 30 d)	es. 30min, 12h, 1d, 1w (max 30 d)
+Guardian (optional)	Custode (facoltativo)
+A guardian can cancel instead of you, and you cannot: useful if you fear coercion or hacking.	Un custode può annullare al posto tuo, e tu no: utile se temi coercizione o un attacco informatico.
+Save	Salva
+Protection saved.	Protezione salvata.
+Disable	Disattiva
+Protection disabled.	Protezione disattivata.
+Active: from {} NFR, held for {} s.	Attiva: da {} NFR, trattenuto per {} s.
+Disabled.	Disattivata.
+Payments you can still cancel	Pagamenti che puoi ancora annullare
+{} -> {}, unlocks {}	{} -> {}, si sblocca {}
+Cancel	Annulla
+Cancelling…	Annullamento…
+Payment cancelled: the funds return to your wallet.	Pagamento annullato: i fondi tornano nel tuo portafoglio.
+Names (name.nfr)	Nomi (nome.nfr)
+Instead of giving a 77-character address, give “alice.nfr”. The name is written in the chain (3 to 32 characters: lowercase letters, digits, hyphen). One-time fee: 100 NFR for 3 letters, 25 for 4, 5 for 5 to 7, 1 NFR from 8.	Invece di dare un indirizzo di 77 caratteri, dai «alice.nfr». Il nome viene scritto nella catena (da 3 a 32 caratteri: lettere minuscole, cifre, trattino). Tariffa una tantum: 100 NFR per 3 lettere, 25 per 4, 5 per 5-7, 1 NFR da 8.
+fee: {}	tariffa: {}
+Register	Registra
+Name requested: it will be active in a few minutes (once a block contains it).	Nome richiesto: sarà attivo tra pochi minuti (quando un blocco lo conterrà).
+Signing…	Firma in corso…
+since block	dal blocco
+Transfer the name	Trasferisci il nome
+to: NFR1-… or contact name	a: NFR1-… o nome di contatto
+Transfer	Trasferisci
+Transfer sent.	Trasferimento inviato.
+Multi-signature groups	Gruppi multifirma
+An M-of-N group: N people share an address, and M of them must agree to spend (for example 2 of 3: you, your father, your mother). Everyone keeps their own key: nobody can alone.	Un gruppo M di N: N persone condividono un indirizzo e M di loro devono essere d'accordo per spendere (per esempio 2 su 3: tu, tuo padre, tua madre). Ognuno conserva la propria chiave: nessuno può da solo.
+group name	nome del gruppo
+Members' addresses (one per line, yours included; contact names allowed)	Indirizzi dei membri (uno per riga, incluso il tuo; ammessi nomi di contatto)
+Create the group	Crea il gruppo
+M must be a number	M deve essere un numero
+Group created. Group address: {}	Gruppo creato. Indirizzo del gruppo: {}
+available {}, pending {}	disponibile {}, in sospeso {}
+Copy address	Copia l'indirizzo
+1) Propose a group payment	1) Proponi un pagamento di gruppo
+amount	importo
+message (optional)	messaggio (facoltativo)
+Prepare the proposal	Prepara la proposta
+Proposal ready: send it to the other members (the recipient is the “to” field above).	Proposta pronta: inviala agli altri membri (il destinatario è il campo «a» qui sopra).
+2) Review, sign, then 3) send	2) Controlla, firma e 3) invia
+signatures: {} of {} needed	firme: {} su {} necessarie
+Sign	Firma
+OK : you signed	OK : hai firmato
+Broadcast	Trasmetti
+Group payment sent.	Pagamento di gruppo inviato.
+Proof of reserve	Prova di riserve
+Prove you hold AT LEAST an amount, without showing your other addresses or exact balance. Each cited address signs a message containing the latest known block and a word chosen by whoever asks you (so an old proof cannot be reused).	Dimostra di possedere ALMENO un importo, senza mostrare i tuoi altri indirizzi né il saldo esatto. Ogni indirizzo citato firma un messaggio che contiene l'ultimo blocco noto e una parola scelta da chi te lo chiede (così una prova vecchia non può essere riutilizzata).
+at least…	almeno…
+requested word	parola richiesta
+Create the proof	Crea la prova
+Copy the proof	Copia la prova
+Check someone else's proof (your node checks everything itself):	Verifica la prova di un'altra persona (il tuo nodo controlla tutto da solo):
+word you asked for	parola che hai chiesto
+Check	Verifica
+OK : Proven: at least {} on {} address(es), at block #{} ({} blocks ago).	OK : Dimostrato: almeno {} su {} indirizzo/i, al blocco n. {} ({} blocchi fa).
+Payment request	Richiesta di pagamento
+Create a link (and QR code) with your address, an amount and a message. The payer pastes it in the Send tab.	Crea un link (e un codice QR) con il tuo indirizzo, un importo e un messaggio. Chi paga lo incolla nella scheda Invia.
+message (e.g. Thanks for lunch)	messaggio (es. Grazie per il pranzo)
+Copy the link	Copia il link
+message too long	messaggio troppo lungo
+Automatic start and background	Avvio automatico e background
+NumFranc can open by itself when you log in, window minimized: the node stays on and helps the network, mining continues. Your opening password is still required (to keep your wallet protected). Closing the window stops NumFranc; minimize it instead.	NumFranc può aprirsi da solo all'accesso, con la finestra ridotta a icona: il nodo resta attivo e aiuta la rete, il mining continua. La tua password di apertura è comunque richiesta (per mantenere protetto il portafoglio). Chiudere la finestra ferma NumFranc; riducila a icona invece.
+Start NumFranc at login	Avvia NumFranc all'accesso
+block {h}	blocco {h}
+NumFranc is already installed: it is in the applications menu, and nfr: links open with it.	NumFranc è già installato: è nel menu delle applicazioni e i link nfr: si aprono con esso.
+NumFranc is in the applications menu ({}).	NumFranc è nel menu delle applicazioni ({}).
+NumFranc is in your account's Applications folder (~/Applications): open it from Launchpad or Spotlight.	NumFranc è nella cartella Applicazioni del tuo account (~/Applications): aprilo da Launchpad o Spotlight.
+NumFranc is in the Start menu.	NumFranc è nel menu Start.
+NumFranc is already running with this data folder (look in the taskbar or Dock, or close the other window).	NumFranc è già in esecuzione con questa cartella dati (guarda nella barra delle applicazioni o nel Dock, oppure chiudi l'altra finestra).
+NumFranc will start by itself when you log in (window minimized).	NumFranc si avvierà da solo all'accesso (finestra ridotta a icona).
+Automatic start disabled.	Avvio automatico disattivato.
+Loading the chain...	Caricamento della catena...
+[!] Automatic discovery unavailable: {e}	[!] Ricerca automatica non disponibile: {e}
+[!] Peer {} banned for 24 h: {reason}	[!] Peer {} bloccato per 24 h: {reason}
+[i] Peer {} disconnected: {reason}	[i] Peer {} disconnesso: {reason}
+[ ] Another node connected to you from the Internet: your port is open.	[ ] Un altro nodo si è connesso a te da Internet: la tua porta è aperta.
+ — message: “{memo}”	 — messaggio: “{memo}”
+[€] Payment received: {}{memo}	[€] Pagamento ricevuto: {}{memo}
+[~] Reorganization of {depth} block(s)	[~] Riorganizzazione di {depth} blocco/i
+[+] Block #{height_hint} found! Reward: {}	[+] Blocco n. {height_hint} trovato! Ricompensa: {}
+[ ] Chain up to date: block #{height_hint}	[ ] Catena aggiornata: blocco n. {height_hint}
+[!] Competing chain REJECTED: it would rewrite {depth} blocks (max {MAX_REORG_DEPTH}). Possible attack.	[!] Catena concorrente RIFIUTATA: riscriverebbe {depth} blocchi (max {MAX_REORG_DEPTH}). Possibile attacco.
+[i] Block dated more than 2 h in the future ignored: check your computer's clock (automatic time setting recommended).	[i] Blocco con data oltre 2 h nel futuro ignorato: controlla l'orologio del tuo computer (si consiglia l'ora automatica).
+[!] Mined block rejected: {e}	[!] Blocco minato rifiutato: {e}
+[ ] Node found on the local network: {target}	[ ] Nodo trovato nella rete locale: {target}
+[i] World directory unavailable ({e}): only local discovery works.	[i] Elenco mondiale non disponibile ({e}): funziona solo la ricerca locale.
+[ ] World directory: {found} NumFranc node(s) found.	[ ] Elenco mondiale: {found} nodo/i NumFranc trovato/i.
+[ ] World directory: no other node yet, searching again regularly.	[ ] Elenco mondiale: ancora nessun altro nodo, si cerca di nuovo regolarmente.
+Looking for your router…	Ricerca del tuo router…
+Port {port} opened automatically: others can connect to you	Porta {port} aperta automaticamente: gli altri possono connettersi a te
+Port {port} open: another node connected to you from the Internet	Porta {port} aperta: un altro nodo si è connesso a te da Internet
+Port opened by hand: waiting for a first node to connect to you	Porta aperta a mano: in attesa che un primo nodo si connetta a te
+Your Internet access is shared: nobody can connect to you first	Il tuo accesso a Internet è condiviso: nessuno può connettersi a te per primo
+Your router does not answer the automatic port opening	Il tuo router non risponde all'apertura automatica della porta
+Your router refuses to open the port	Il tuo router si rifiuta di aprire la porta
+Your provider gives you an Internet address shared with other customers (4G/5G, or fibre with « CGNAT »). No software can open a port there. NumFranc still works: it connects to others, mines and sends normally. To be reachable, ask your provider for a public IPv4 address (often free, in the customer area), or use another connection.	Il tuo operatore ti assegna un indirizzo Internet condiviso con altri clienti (4G/5G, o fibra con «CGNAT»). Nessun software può aprire una porta lì. NumFranc funziona comunque: si connette agli altri, fa mining e invia normalmente. Per essere raggiungibile, chiedi al tuo operatore un indirizzo IPv4 pubblico (spesso gratuito, nell'area clienti) oppure usa un'altra connessione.
+NumFranc looked for your router with UPnP, NAT-PMP and PCP and got no answer. That is fine: NumFranc still works, connects to others, mines and sends normally. It just means others cannot connect to you first. To fix it, follow the guide below (a few minutes, once).	NumFranc ha cercato il tuo router con UPnP, NAT-PMP e PCP senza ricevere risposta. Non è grave: NumFranc funziona comunque, si connette agli altri, fa mining e invia normalmente. Solo che gli altri non possono connettersi a te per primi. Per risolvere, segui la guida qui sotto (pochi minuti, una volta sola).
+Your router answered but refuses to open the port (ports already taken, limited settings, or an address shared by your provider). Close other file-sharing software on this network and restart NumFranc, or follow the guide below. NumFranc still works, but others cannot connect to you first.	Il tuo router ha risposto ma si rifiuta di aprire la porta (porte già occupate, impostazioni limitate o indirizzo condiviso dal tuo operatore). Chiudi gli altri programmi di condivisione file su questa rete e riavvia NumFranc, oppure segui la guida qui sotto. NumFranc funziona comunque, ma gli altri non possono connettersi a te per primi.
+You said you opened the port yourself. As soon as another node connects to you, this message turns green (it can take a few hours). If nothing happens after a day, check the forwarding: right port, TCP type, and this computer's address (see the guide below).	Hai indicato di aver aperto la porta da solo. Non appena un altro nodo si connette a te, questo messaggio diventa verde (può richiedere qualche ora). Se dopo un giorno non succede nulla, controlla l'inoltro: porta giusta, tipo TCP e indirizzo di questo computer (vedi la guida qui sotto).
+1. Open your router's page with the button below (its password is often printed under the router or in its leaflet).\n2. Look for « UPnP » and turn it on. If you cannot find it, look for « port forwarding », « NAT » or « virtual server ».\n3. Forward the TCP port shown below to this computer's address (also below), then tick « I opened the port myself » and restart NumFranc.	1. Apri la pagina del tuo router con il pulsante qui sotto (la sua password è spesso stampata sotto il router o nel manuale).\n2. Cerca «UPnP» e attivalo. Se non lo trovi, cerca «inoltro delle porte», «Port forwarding», «NAT» o «server virtuale».\n3. Inoltra la porta TCP indicata qui sotto all'indirizzo di questo computer (anch'esso qui sotto), poi spunta la casella «Ho aperto la porta da solo» e riavvia NumFranc.
+wrong password (or modified file)	password errata (o file modificato)
+{what}: at least {min_len} characters ({n} so far)	{what}: almeno {min_len} caratteri (finora {n})
+{what}: too many repeated characters (at least {} different characters)	{what}: troppi caratteri ripetuti (almeno {} caratteri diversi)
+{what}: mix at least 3 kinds of characters (lowercase, uppercase, digits, symbols), or use a phrase of 20 characters or more	{what}: mescola almeno 3 tipi di caratteri (minuscole, maiuscole, cifre, simboli) oppure usa una frase di 20 caratteri o più
+{what}: too easy to guess (contains “{weak}”)	{what}: troppo facile da indovinare (contiene «{weak}»)
+a recovery piece starts with NFRS	una parte di recupero inizia con NFRS
+invalid characters in the piece	caratteri non validi nella parte
+wrong piece length (piece cut off?)	lunghezza della parte errata (tagliata?)
+wrong piece checksum (typo?)	checksum della parte errato (errore di battitura?)
+invalid piece number	numero di parte non valido
+you need two DIFFERENT pieces (here twice piece no. {xa})	servono due parti DIVERSE (qui, due volte la parte n. {xa})
+these two pieces do not come from the same wallet	queste due parti non provengono dallo stesso portafoglio
+wallet frozen: the seed is no longer on this computer. Unfreeze it with your three codes (Security tab).	portafoglio congelato: il seed non è più su questo computer. Scongelalo con i tuoi tre codici (scheda Sicurezza).
+spending code required	codice di spesa richiesto
+wrong spending code	codice di spesa errato
+an address starts with NFR1	un indirizzo inizia con NFR1
+invalid characters in the address	caratteri non validi nell'indirizzo
+wrong address length (address cut off?)	lunghezza dell'indirizzo errata (tagliato?)
+wrong checksum (typo?)	checksum errato (errore di battitura?)
+invalid duration (examples: 30min, 12h, 3d, 2w, 1mo, 1y)	durata non valida (esempi: 30min, 12h, 3d, 2w, 1mo, 1y)
+unknown unit: use min, h, d (days), w (weeks), mo (months) or y (years)	unità sconosciuta: usa min, h, d (giorni), w (settimane), mo (mesi) o y (anni)
+duration too large	durata troppo grande
+the duration must be positive	la durata deve essere positiva
+the lock is limited to 10 years	il blocco è limitato a 10 anni
+invalid amount (8 decimals maximum)	importo non valido (massimo 8 decimali)
+invalid amount	importo non valido
+amount too large	importo troppo grande
+the amount must be positive	l'importo deve essere positivo
+amount too large (more than all the NFR that will ever exist)	importo troppo grande (più di tutti gli NFR che esisteranno mai)
+invalid recovery code	codice di recupero non valido
+this file is not an encrypted NumFranc wallet	questo file non è un portafoglio NumFranc cifrato
+unreadable wallet	portafoglio illeggibile
+the name must be 1 to 40 characters long	il nome deve avere da 1 a 40 caratteri
+a name cannot start with NFR1	un nome non può iniziare con NFR1
+no spaces in a name (e.g. Mom, HP_office)	niente spazi in un nome (es. Mamma, Ufficio_HP)
+“{name}” is already in the address book	«{name}» è già nella rubrica
+“{name}” is not in the address book	«{name}» non è nella rubrica
+“{}” is neither in the address book nor an NFR1 address	«{}» non è né nella rubrica né un indirizzo NFR1
+message too long: {} bytes out of {MAX_MEMO} (accented letters count double)	messaggio troppo lungo: {} byte su {MAX_MEMO} (le lettere accentate contano doppio)
+insufficient funds: available {}, maturing {}, locked {} (fee {})	fondi insufficienti: disponibile {}, in maturazione {}, bloccato {} (commissione {})
+this payment would use {} small coins: too big to be relayed. Send a smaller amount, or split it into several payments.	questo pagamento userebbe {} monete piccole: troppo grande per essere inoltrato. Invia un importo minore o dividilo in più pagamenti.
+funds are needed on the name owner's address to prove it is you	servono fondi sull'indirizzo del titolare del nome per dimostrare che sei tu
+wrong opening password	password di apertura errata
+the wallet is already frozen	il portafoglio è già congelato
+the wallet is not frozen	il portafoglio non è congelato
+these recovery pieces do not match this wallet	queste parti di recupero non corrispondono a questo portafoglio
+the threshold must be positive	la soglia deve essere positiva
+the delay must be between 1 second and 30 days	il termine deve essere compreso tra 1 secondo e 30 giorni
+this payment no longer exists (already claimed or cancelled?)	questo pagamento non esiste più (già riscosso o annullato?)
+this payment cannot be cancelled	questo pagamento non può essere annullato
+this payment cannot be cancelled from this wallet	questo pagamento non può essere annullato da questo portafoglio
+the unlock date has passed: the recipient can spend it, too late to cancel	la data di sblocco è passata: il destinatario può spenderlo, è troppo tardi per annullare
+a cancellation is already pending	c'è già un annullamento in sospeso
+the name “{}.nfr” does not exist (yet)	il nome «{}.nfr» non esiste (ancora)
+“{}.nfr” is already taken	«{}.nfr» è già preso
+unknown name	nome sconosciuto
+this name is not yours	questo nome non è tuo
+the group name is 1 to 40 characters, without spaces	il nome del gruppo ha da 1 a 40 caratteri, senza spazi
+the group “{name}” already exists	il gruppo «{name}» esiste già
+this group already exists under another name	questo gruppo esiste già con un altro nome
+unknown group “{name}”	gruppo sconosciuto «{name}»
+unknown group “{group}”	gruppo sconosciuto «{group}»
+message too long: {} bytes out of {MAX_MEMO}	messaggio troppo lungo: {} byte su {MAX_MEMO}
+not enough funds in the group: {} available for {} + fee {}	fondi insufficienti nel gruppo: {} disponibili per {} + commissione {}
+you are not a member of this group	non sei membro di questo gruppo
+you have already signed this proposal	hai già firmato questa proposta
+there are already enough signatures	ci sono già abbastanza firme
+the challenge word is 60 bytes at most	la parola di sfida è di 60 byte al massimo
+you do not hold this amount (or it is spread over too many addresses)	non possiedi questo importo (o è distribuito su troppi indirizzi)
+Home	Home
+Receive	Ricevi
+History	Cronologia
+Security	Sicurezza
+Explain	Spiegazioni
+Explorer	Esplora
+Issuance	Emissione
+Advanced	Avanzate
+Blue	Blu
+Green	Verde
+Purple	Viola
+Orange	Arancione
+Red	Rosso
+Teal	Turchese
+Mining is already running. Keep NumFranc open: a reward becomes spendable after 100 blocks.	Il tuo mining è già in corso. Lascia NumFranc aperto: una ricompensa diventa spendibile dopo 100 blocchi.
+Mining is off. To earn NFR, tick « Mine with this computer » on the Home screen and keep NumFranc open.	Il mining è spento. Per guadagnare NFR, spunta «Fai mining con questo computer» in Home e lascia NumFranc aperto.
+NumFranc opens the port on your router by itself and looks for other nodes. Status: Settings > Connection.	NumFranc apre da solo la porta del tuo router e cerca altri nodi. Stato: Impostazioni > Connessione.
+nfr:… payment links open in NumFranc, already filled in. Nothing is sent without your spending code.	I link di pagamento nfr:… si aprono in NumFranc, già compilati. Non viene inviato nulla senza il tuo codice di spesa.
+Keep your 3 recovery pieces on 3 separate papers: any 2 of 3 recover everything.	Conserva le tue 3 parti di recupero su 3 fogli separati: 2 su 3 bastano per recuperare tutto.

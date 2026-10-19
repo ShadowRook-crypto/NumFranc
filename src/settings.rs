@@ -1,5 +1,6 @@
 //! Réglages de l'application (fichier texte reglages.txt du dossier de données).
 
+use crate::i18n::Lang;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -7,7 +8,7 @@ pub struct Settings {
     pub dark: bool,
     /// Indice dans ACCENTS.
     pub accent: usize,
-    pub english: bool,
+    pub lang: Lang,
     /// Minage selon un horaire (nuit / jour).
     pub schedule: bool,
     /// Heure de début de la nuit (0-23) et de fin (0-23), heure locale.
@@ -18,6 +19,8 @@ pub struct Settings {
     pub cores_day: usize,
     /// Mode expert : tous les onglets visibles (sinon, l'essentiel et un menu « Plus »).
     pub expert: bool,
+    /// L'utilisateur dit avoir ouvert le port lui-même sur sa box.
+    pub manual_port: bool,
 }
 
 /// Couleurs principales proposées : (nom FR, nom EN, couleur claire, couleur sombre).
@@ -36,13 +39,14 @@ impl Default for Settings {
         Self {
             dark: false,
             accent: 0,
-            english: false,
+            lang: crate::i18n::detect_system().unwrap_or(Lang::Fr),
             schedule: false,
             night_start: 22,
             night_end: 7,
             cores_night: cores.saturating_sub(1).max(1),
             cores_day: 1,
             expert: false,
+            manual_port: false,
         }
     }
 }
@@ -61,13 +65,14 @@ impl Settings {
             match k {
                 "theme" => s.dark = v == "sombre",
                 "couleur" => s.accent = v.parse().unwrap_or(0).min(ACCENTS.len() - 1),
-                "langue" => s.english = v == "en",
+                "langue" => s.lang = Lang::from_code(v).unwrap_or(Lang::Fr),
                 "horaire" => s.schedule = v == "oui",
                 "nuit_debut" => s.night_start = v.parse().unwrap_or(22).min(23),
                 "nuit_fin" => s.night_end = v.parse().unwrap_or(7).min(23),
                 "coeurs_nuit" => s.cores_night = v.parse().unwrap_or(s.cores_night),
                 "coeurs_jour" => s.cores_day = v.parse().unwrap_or(s.cores_day),
                 "expert" => s.expert = v == "oui",
+                "port_manuel" => s.manual_port = v == "oui",
                 _ => {}
             }
         }
@@ -76,16 +81,17 @@ impl Settings {
 
     pub fn save(&self, dir: &Path) {
         let text = format!(
-            "# Réglages NumFranc\ntheme={}\ncouleur={}\nlangue={}\nhoraire={}\nnuit_debut={}\nnuit_fin={}\ncoeurs_nuit={}\ncoeurs_jour={}\nexpert={}\n",
+            "# Réglages NumFranc\ntheme={}\ncouleur={}\nlangue={}\nhoraire={}\nnuit_debut={}\nnuit_fin={}\ncoeurs_nuit={}\ncoeurs_jour={}\nexpert={}\nport_manuel={}\n",
             if self.dark { "sombre" } else { "clair" },
             self.accent,
-            if self.english { "en" } else { "fr" },
+            self.lang.code(),
             if self.schedule { "oui" } else { "non" },
             self.night_start,
             self.night_end,
             self.cores_night,
             self.cores_day,
-            if self.expert { "oui" } else { "non" }
+            if self.expert { "oui" } else { "non" },
+            if self.manual_port { "oui" } else { "non" }
         );
         let _ = std::fs::create_dir_all(dir);
         let _ = std::fs::write(file(dir), text);
@@ -129,7 +135,7 @@ mod tests {
     #[test]
     fn sauvegarde_et_relecture() {
         let dir = std::env::temp_dir().join(format!("nfr-reglages-{}", std::process::id()));
-        let s = Settings { dark: true, accent: 3, english: true, schedule: true, night_start: 21, night_end: 6, cores_night: 3, cores_day: 1, expert: true };
+        let s = Settings { dark: true, accent: 3, lang: Lang::De, schedule: true, night_start: 21, night_end: 6, cores_night: 3, cores_day: 1, expert: true, manual_port: true };
         s.save(&dir);
         assert_eq!(Settings::load(&dir), s);
         std::fs::remove_dir_all(&dir).unwrap();

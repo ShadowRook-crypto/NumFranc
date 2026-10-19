@@ -11,6 +11,7 @@ use crate::p2p::{read_message, write_message, Message};
 use crate::tx::{Transaction, TxOut};
 use crate::wallet::{format_amount, Wallet};
 use std::collections::{HashMap, HashSet};
+use std::net::Ipv4Addr;
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicUsize, Ordering};
@@ -128,12 +129,18 @@ pub struct Node {
     started: Instant,
     /// Port annoncé aux autres nœuds (peut différer du port local si la box en a attribué un autre).
     public_port: AtomicU16,
-    /// Vrai si la box a accepté d'ouvrir un port : ce PC peut alors s'annoncer au monde.
-    reachable: AtomicBool,
+    /// Vrai si la box a accepté d'ouvrir un port (avec une adresse publique) : ce PC peut alors s'annoncer au monde.
+    mapped: AtomicBool,
     /// Adresse publique de la box (pour ne pas se compter soi-même dans l'annuaire).
     public_ip: Mutex<Option<IpAddr>>,
-    /// État de l'ouverture du port, affiché à l'utilisateur.
+    /// État de l'ouverture du port tel que la box le dit (sans la preuve par connexion entrante).
     port_state: Mutex<PortState>,
+    /// Vrai dès qu'un nœud, depuis une adresse publique, s'est connecté à nous : preuve que le port est ouvert.
+    inbound_public: AtomicBool,
+    /// Vrai si l'utilisateur dit avoir ouvert le port à la main.
+    manual_port: AtomicBool,
+    /// Adresse de la box, de ce PC et port : pour le guide de réglage manuel.
+    aide: Mutex<Option<portmap::AideBox>>,
 }
 
 /// 8 premiers octets du hash du genesis : seuls les nœuds du même réseau se répondent.
@@ -176,10 +183,14 @@ fn ports_candidats(port: u16, previous: Option<u16>) -> Vec<u16> {
 
 /// Ouvre le port TCP `port` sur la box via UPnP.
 /// Renvoie (adresse publique de la box, port public obtenu).
-fn open_port_upnp(port: u16, previous: Option<u16>) -> Result<(IpAddr, u16), EchecPort> {
+fn open_port_upnp(port: u16, previous: Option<u16>, direct: Option<Ipv4Addr>) -> Result<(IpAddr, u16), EchecPort> {
     use igd_next::{search_gateway, PortMappingProtocol, SearchOptions};
     let mut opts = SearchOptions::default();
     opts.timeout = Some(Duration::from_secs(5));
+    // Seconde chance : certaines box ignorent la diffusion mais répondent si on leur parle directement.
+    if let Some(box_ip) = direct {
+        opts.broadcast_address = SocketAddr::new(IpAddr::V4(box_ip), 1900);
+    }
     let gw = search_gateway(opts).map_err(|_| EchecPort::PasDeBox)?;
     let probe = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|_| EchecPort::PasDeBox)?;
     probe.connect(gw.addr).map_err(|_| EchecPort::PasDeBox)?;
@@ -211,6 +222,25 @@ fn open_port_natpmp(port: u16, previous: Option<u16>) -> Result<(IpAddr, u16), E
         match portmap::natpmp_ouvrir(addr, port, c, BAIL_PORT_S) {
             Ok((ip, p)) => return Ok((IpAddr::V4(ip), p)),
             // Pas de réponse du tout : inutile d'insister avec d'autres ports.
+            Err(e) if e == "pas de réponse" => return Err(if refus { EchecPort::Refus } else { EchecPort::PasDeBox }),
+            Err(_) => refus = true,
+        }
+    }
+    Err(EchecPort::Refus)
+}
+
+/// Même chose en PCP (RFC 6887), le successeur de NAT-PMP.
+fn open_port_pcp(port: u16, previous: Option<u16>) -> Result<(IpAddr, u16), EchecPort> {
+    let gw = portmap::passerelle_par_defaut().ok_or(EchecPort::PasDeBox)?;
+    let addr = SocketAddr::new(IpAddr::V4(gw), portmap::NATPMP_PORT);
+    let local = match portmap::aide_box(port).pc_ip {
+        Some(IpAddr::V4(v4)) => v4,
+        _ => return Err(EchecPort::PasDeBox),
+    };
+    let mut refus = false;
+    for c in ports_candidats(port, previous) {
+        match portmap::pcp_ouvrir(addr, local, port, c, BAIL_PORT_S) {
+            Ok(r) => return Ok(r),
             Err(e) if e == "pas de réponse" => return Err(if refus { EchecPort::Refus } else { EchecPort::PasDeBox }),
             Err(_) => refus = true,
         }
@@ -253,9 +283,12 @@ impl Node {
             last_log: Mutex::new(Instant::now() - Duration::from_secs(60)),
             started: Instant::now(),
             public_port: AtomicU16::new(opts.port),
-            reachable: AtomicBool::new(false),
+            mapped: AtomicBool::new(false),
             public_ip: Mutex::new(None),
             port_state: Mutex::new(PortState::Searching),
+            inbound_public: AtomicBool::new(false),
+            manual_port: AtomicBool::new(false),
+            aide: Mutex::new(None),
         });
 
         let listener = TcpListener::bind(("0.0.0.0", opts.port))
@@ -518,6 +551,14 @@ impl Node {
                         // Connexion sortante réussie : l'adresse passe dans les « testées ».
                         self.addrman.lock().unwrap().good(p.addr);
                     } else if listen_port != 0 {
+                        // Un vrai nœud NumFranc, venu d'une adresse publique, a réussi à nous joindre :
+                        // preuve que notre port est ouvert.
+                        if !crate::addrman::is_local_ip(&p.addr.ip()) && !self.inbound_public.swap(true, Ordering::SeqCst) {
+                            log(&crate::tf!(
+                                "[ ] Un autre nœud s'est connecté à toi depuis Internet : ton port est bien ouvert.",
+                                "[ ] Another node connected to you from the Internet: your port is open."
+                            ));
+                        }
                         let a = SocketAddr::new(p.addr.ip(), listen_port);
                         p.label = a.to_string();
                         self.addrman.lock().unwrap().add(a, group(&p.addr.ip()));
@@ -977,13 +1018,21 @@ impl Node {
     fn upnp_loop(self: Arc<Self>) {
         let mut external: Option<u16> = None;
         loop {
-            let essai = open_port_upnp(self.opts.port, external).map(|(ip, p)| (ip, p, "UPnP")).or_else(|e1| {
-                match open_port_natpmp(self.opts.port, external) {
-                    Ok((ip, p)) => Ok((ip, p, "NAT-PMP")),
+            let box_ip = portmap::passerelle_par_defaut();
+            let essai = open_port_upnp(self.opts.port, external, None)
+                .or_else(|e| match (e, box_ip) {
+                    (EchecPort::PasDeBox, Some(b)) => open_port_upnp(self.opts.port, external, Some(b)),
+                    (e, _) => Err(e),
+                })
+                .map(|(ip, p)| (ip, p, "UPnP"))
+                .or_else(|e1| {
                     // Si l'UPnP a répondu par un refus, c'est lui qui explique l'échec.
-                    Err(e2) => Err(if matches!(e1, EchecPort::Refus) { EchecPort::Refus } else { e2 }),
-                }
-            });
+                    let refus1 = matches!(e1, EchecPort::Refus);
+                    open_port_natpmp(self.opts.port, external)
+                        .map(|(ip, p)| (ip, p, "NAT-PMP"))
+                        .or_else(|_| open_port_pcp(self.opts.port, external).map(|(ip, p)| (ip, p, "PCP")))
+                        .map_err(|e2| if refus1 { EchecPort::Refus } else { e2 })
+                });
             let nouvel_etat = match essai {
                 Ok((ext, port, via)) => {
                     external = Some(port);
@@ -993,18 +1042,21 @@ impl Node {
                         IpAddr::V4(v4) => portmap::est_publique(v4),
                         IpAddr::V6(_) => true,
                     };
-                    self.reachable.store(publique, Ordering::SeqCst);
+                    self.mapped.store(publique, Ordering::SeqCst);
                     if publique { PortState::Open { port, via } } else { PortState::Shared { port } }
                 }
                 Err(EchecPort::PasDeBox) => {
-                    self.reachable.store(false, Ordering::SeqCst);
+                    self.mapped.store(false, Ordering::SeqCst);
                     PortState::NoRouter
                 }
                 Err(EchecPort::Refus) => {
-                    self.reachable.store(false, Ordering::SeqCst);
+                    self.mapped.store(false, Ordering::SeqCst);
                     PortState::Refused
                 }
             };
+            if nouvel_etat.guide_utile() {
+                *self.aide.lock().unwrap() = Some(portmap::aide_box(self.opts.port));
+            }
             let change = {
                 let mut e = self.port_state.lock().unwrap();
                 let c = *e != nouvel_etat;
@@ -1020,9 +1072,32 @@ impl Node {
         }
     }
 
+    /// Peut-on être joint depuis Internet ? (box qui a ouvert le port, port ouvert à la main, ou preuve par connexion entrante.)
+    fn is_reachable(&self) -> bool {
+        self.mapped.load(Ordering::SeqCst) || self.manual_port.load(Ordering::SeqCst) || self.inbound_public.load(Ordering::SeqCst)
+    }
+
+    /// L'utilisateur dit avoir ouvert le port lui-même sur sa box (ou le retire).
+    pub fn set_manual_port(&self, on: bool) {
+        self.manual_port.store(on, Ordering::SeqCst);
+    }
+
+    /// Adresse de la box, de ce PC et port, pour le guide de réglage manuel (None tant que non calculée).
+    pub fn aide_box(&self) -> Option<portmap::AideBox> {
+        self.aide.lock().unwrap().clone()
+    }
+
     /// État de l'ouverture du port (pour l'accueil et les Réglages).
     pub fn port_state(&self) -> PortState {
-        self.port_state.lock().unwrap().clone()
+        let base = self.port_state.lock().unwrap().clone();
+        let prouve = self.inbound_public.load(Ordering::SeqCst);
+        let port = self.public_port.load(Ordering::SeqCst);
+        match base {
+            PortState::Open { port, .. } | PortState::Shared { port } if prouve => PortState::Confirmed { port },
+            PortState::NoRouter | PortState::Refused if prouve => PortState::Confirmed { port },
+            PortState::NoRouter | PortState::Refused if self.manual_port.load(Ordering::SeqCst) => PortState::ManualWaiting { port },
+            b => b,
+        }
     }
 
     // ---------- Découverte mondiale sans serveur (DHT BitTorrent) ----------
@@ -1047,7 +1122,7 @@ impl Node {
         };
         let mut round = 0u32;
         loop {
-            if self.reachable.load(Ordering::SeqCst) {
+            if self.is_reachable() {
                 let _ = dht.announce_peer(topic, Some(self.public_port.load(Ordering::SeqCst)));
             }
             let mut found = 0usize;

@@ -5,7 +5,10 @@ NumFranc (NFR) — mode d'emploi
    Le plus simple : le fichier d'installation de votre système, sur la page des versions
    (https://github.com/ShadowRook-crypto/NumFranc/releases/latest). Ouvrez le dossier « Téléchargements », puis :
    - Mac     : double-clic sur NumFranc-macos.dmg ; glissez NumFranc vers Applications ; ouvrez-le depuis le Launchpad.
-               La toute première fois, si macOS refuse : clic droit sur NumFranc > Ouvrir > Ouvrir (une seule fois).
+               La toute première fois, macOS affiche « n'a pas été ouvert » (projet indépendant, sans compte développeur Apple).
+               Clique sur « Terminé », puis Réglages Système > Confidentialité et sécurité, tout en bas :
+               « Ouvrir quand même » (mot de passe du Mac), puis « Ouvrir ». Une seule fois.
+               (macOS 14 et plus ancien : clic droit sur NumFranc > Ouvrir > Ouvrir suffit.)
    - Windows : double-clic sur NumFranc-windows-installation.exe, puis « Suivant ». Si Windows affiche
                « Windows a protégé votre ordinateur » : Informations complémentaires > Exécuter quand même.
                NumFranc est ensuite dans le menu Démarrer.
@@ -14,7 +17,8 @@ NumFranc (NFR) — mode d'emploi
    Au premier lancement, NumFranc se range tout seul dans le menu des applications et active les liens de paiement nfr:.
 
    Sans installeur (ce dossier, NumFranc.zip) :
-   - Mac     : clic droit sur « Lancer NumFranc.command » > Ouvrir (la 1re fois), puis double-clic.
+   - Mac     : double-clic sur « Lancer NumFranc.command ». La 1re fois, macOS le bloque : Réglages Système >
+               Confidentialité et sécurité > « Ouvrir quand même » (macOS 14 et plus ancien : clic droit > Ouvrir).
    - Windows : double-clic sur « Lancer NumFranc.bat ».
    - Linux   : dans un terminal, ./lancer-numfranc.sh
    Si aucune version toute prête n'est fournie pour votre machine, le lanceur installe
@@ -44,7 +48,7 @@ NumFranc (NFR) — mode d'emploi
 
 3. REJOINDRE LE RÉSEAU
    Rien à régler : NumFranc trouve les autres ordinateurs tout seul (réseau local, puis annuaire mondial),
-   et il demande lui-même à votre box d'ouvrir le port 6910 (UPnP, puis NAT-PMP) pour que les autres
+   et il demande lui-même à votre box d'ouvrir le port 6910 (UPnP, NAT-PMP, PCP) pour que les autres
    puissent aussi se connecter à vous. L'état s'affiche sur l'accueil et dans Réglages > Connexion, avec,
    si ça ne marche pas, la raison et quoi faire (UPnP désactivé sur la box, adresse Internet partagée par
    l'opérateur, etc.). Même sans ouverture du port, NumFranc fonctionne : il se connecte aux autres.
@@ -90,12 +94,23 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. NOUVEAUTÉS DE LA v1.1.0
+6. NOUVEAUTÉS DE LA v1.1.1
+   - Langues : l'application existe maintenant en français, anglais, espagnol, allemand, italien et portugais
+     (écran d'accueil et Réglages > Langue). Au premier lancement, la langue du système est choisie si elle est prise en charge.
+     Les traductions sont faites par ordinateur : toute correction est la bienvenue.
+   - Port : en plus d'UPnP et NAT-PMP, NumFranc essaie PCP et parle directement à la box. Si rien ne répond, Réglages > Connexion
+     affiche un guide valable partout (bouton « Ouvrir la page de ma box », port et adresse à recopier) et une case
+     « J'ai ouvert le port moi-même ». Le voyant devient vert dès qu'un autre nœud se connecte à vous depuis Internet.
+   - Mac : instructions corrigées pour macOS Sequoia (Réglages Système > Confidentialité et sécurité > « Ouvrir quand même »).
+   - Durées de verrouillage : on peut aussi écrire 3d, 2w, 1mo, 1y.
+   - Aucun changement de chaîne ni de protocole : les v0.7, v1.0, v1.1.0 et v1.1.1 se parlent.
+
+   NOUVEAUTÉS DE LA v1.1.0
    - Installeurs « double-clic » : NumFranc-macos.dmg (Mac), NumFranc-windows-installation.exe (Windows),
      NumFranc-linux-amd64.deb / -arm64.deb (Linux). Plus besoin de terminal.
    - Au premier lancement : rangement automatique dans le menu des applications, liens nfr: activés,
      et un petit écran « Quelques mots avant de commencer ».
-   - Ouverture automatique du port sur la box (UPnP, puis NAT-PMP, renouvelée toutes les 10 minutes), avec un
+   - Ouverture automatique du port sur la box (UPnP, NAT-PMP, PCP, renouvelée toutes les 10 minutes), avec un
      message d'état clair sur l'accueil et dans Réglages > Connexion.
    - Lien de paiement nfr: : le montant arrive maintenant correctement dans « Envoyer » (« invalid amount » corrigé).
    - Paiements : le calcul du code de dépense (plusieurs secondes) ne fige plus le nœud ni la fenêtre.

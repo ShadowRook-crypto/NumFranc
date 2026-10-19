@@ -14,7 +14,7 @@ Page de téléchargement : https://shadowrook-crypto.github.io/NumFranc/ (franç
 
 | Système | Fichier | Installation |
 |---|---|---|
-| Mac | `NumFranc-macos.dmg` | double-clic, glisser NumFranc vers Applications, ouvrir depuis le Launchpad (la 1re fois : clic droit > Ouvrir) |
+| Mac | `NumFranc-macos.dmg` | double-clic, glisser NumFranc vers Applications, ouvrir depuis le Launchpad (la 1re fois : Réglages Système > Confidentialité et sécurité > « Ouvrir quand même » ; macOS 14 et plus ancien : clic droit > Ouvrir) |
 | Windows | `NumFranc-windows-installation.exe` | double-clic, « Suivant » (si SmartScreen : Informations complémentaires > Exécuter quand même) |
 | Linux | `NumFranc-linux-amd64.deb` ou `-arm64.deb` | double-clic, ou `sudo apt install ./NumFranc-linux-amd64.deb` |
 
@@ -141,7 +141,7 @@ et Windows, puis publie `NumFranc.zip`.
 - [x] Interface graphique (6 onglets, mode expert), liens de paiement `nfr:`
 - [x] Signature des versions (SLH-DSA), vérification des mises à jour, compilations reproductibles
 - [x] Audit de sécurité et corrections « comme Bitcoin » (v1.0)
-- [x] Ouverture automatique du port (UPnP, puis NAT-PMP) avec message d'état, installeurs Mac / Windows / Linux (v1.1)
+- [x] Ouverture automatique du port (UPnP, NAT-PMP, PCP) avec message d'état et guide de réglage universel, 6 langues, installeurs Mac / Windows / Linux (v1.1)
 - [ ] Nœuds d'amorçage publics permanents (`DEFAULT_SEEDS`, en plus de l'annuaire mondial)
 - [ ] Synchronisation « headers-first »
 - [ ] Interface RPC locale (port 6911) pour une future passerelle d'échange

@@ -37,13 +37,22 @@ ln -s /Applications "$T/disque/Applications"
 cat > "$T/disque/Lis-moi - Read me.txt" <<'TXT'
 INSTALLER : glisse « NumFranc » sur « Applications ». Ensuite, ouvre-le depuis le Launchpad.
 
-LA TOUTE PREMIERE FOIS, macOS peut dire que l'app « ne peut pas être ouverte » : NumFranc est un projet
-indépendant, sans compte développeur Apple. Fais alors : clic droit sur NumFranc > Ouvrir > Ouvrir.
-(Ou : Réglages Système > Confidentialité et sécurité > « Ouvrir quand même ».) Une seule fois.
+LA TOUTE PREMIERE FOIS, macOS affiche « NumFranc n'a pas été ouvert » : NumFranc est un projet indépendant,
+sans compte développeur Apple, donc Apple ne peut pas vérifier l'éditeur. Fais alors, une seule fois :
+  1. Clique sur « Terminé ».
+  2. Ouvre Réglages Système > Confidentialité et sécurité.
+  3. Descends tout en bas : à côté de « NumFranc a été bloqué », clique sur « Ouvrir quand même ».
+  4. Entre le mot de passe de ton Mac, puis confirme avec « Ouvrir ».
+(macOS 14 « Sonoma » et plus ancien : un clic droit sur NumFranc > Ouvrir > Ouvrir suffit.)
 
 INSTALL: drag « NumFranc » onto « Applications », then open it from Launchpad.
-THE VERY FIRST TIME, macOS may say the app « cannot be opened » (independent project, no Apple developer account):
-right-click NumFranc > Open > Open. (Or: System Settings > Privacy & Security > « Open Anyway ».) Only once.
+THE VERY FIRST TIME, macOS shows « NumFranc Not Opened »: NumFranc is an independent project with no Apple
+developer account, so Apple cannot verify the publisher. Then, only once:
+  1. Click « Done ».
+  2. Open System Settings > Privacy & Security.
+  3. Scroll to the bottom: next to « NumFranc was blocked », click « Open Anyway ».
+  4. Enter your Mac password, then confirm with « Open ».
+(macOS 14 « Sonoma » and older: right-click NumFranc > Open > Open is enough.)
 TXT
 hdiutil create -volname "NumFranc" -srcfolder "$T/disque" -fs HFS+ -format UDZO -ov "$OUT" >/dev/null
 echo "Disque prêt : $OUT"

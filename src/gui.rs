@@ -34,7 +34,7 @@ mod plus;
 /// (pas d'écran, connexion à distance…) : le programme passe alors en mode console.
 pub fn run(opts: Options) -> Result<(), String> {
     let settings = Settings::load(&opts.data_dir);
-    crate::i18n::set_english(settings.english);
+    crate::i18n::set_lang(settings.lang);
     #[cfg(target_os = "macos")]
     crate::mac_liens::installer(opts.data_dir.clone());
     // Premier lancement : rangement dans le menu des applications + liens nfr:, sans rien demander.
@@ -105,6 +105,54 @@ fn port_lines(ui: &mut egui::Ui, p: &Pal, etat: &Option<crate::portmap::PortStat
     } else {
         ui.label(RichText::new(t("Détails : Réglages > Connexion.", "Details: Settings > Connection.")).small().color(p.grey));
     }
+}
+
+/// Guide de réglage manuel de la box : adresse de la box, bouton pour l'ouvrir, valeurs à recopier,
+/// et la case « j'ai ouvert le port moi-même ». Renvoie vrai si la case a changé.
+fn port_guide(ui: &mut egui::Ui, p: &Pal, etat: &crate::portmap::PortState, aide: &Option<crate::portmap::AideBox>, manuel: &mut bool) -> bool {
+    use crate::portmap::PortState;
+    let mut changed = false;
+    if etat.guide_utile() || *manuel {
+        ui.add_space(6.0);
+        ui.label(RichText::new(t("Guide : ouvrir le port à la main", "Guide: open the port by hand")).strong());
+        ui.label(RichText::new(PortState::etapes()).small().color(p.grey));
+        if let Some(a) = aide {
+            ui.horizontal_wrapped(|ui| {
+                if let Some(b) = a.box_ip {
+                    if ui.button(tf!("Ouvrir la page de ma box ({b})", "Open my router's page ({b})")).clicked() {
+                        crate::maj::ouvrir_page_box(b);
+                    }
+                } else {
+                    ui.label(RichText::new(t(
+                        "Adresse de la box introuvable : elle est souvent écrite sous la box (par exemple 192.168.1.1).",
+                        "Router address not found: it is often printed under the router (for example 192.168.1.1).",
+                    ))
+                    .small()
+                    .color(p.grey));
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label(t("Port à rediriger (TCP) :", "Port to forward (TCP):"));
+                ui.monospace(a.port.to_string());
+                if ui.small_button(t("Copier", "Copy")).clicked() {
+                    ui.ctx().copy_text(a.port.to_string());
+                }
+            });
+            if let Some(ip) = a.pc_ip {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(t("Adresse de cet ordinateur :", "This computer's address:"));
+                    ui.monospace(ip.to_string());
+                    if ui.small_button(t("Copier", "Copy")).clicked() {
+                        ui.ctx().copy_text(ip.to_string());
+                    }
+                });
+            }
+        }
+    }
+    if etat.guide_utile() || *manuel || etat.niveau() == 1 {
+        changed |= ui.checkbox(manuel, t("J'ai ouvert le port moi-même", "I opened the port myself")).changed();
+    }
+    changed
 }
 
 fn palette(s: &Settings) -> Pal {
@@ -405,7 +453,7 @@ impl App {
 
     fn save_settings(&mut self, ctx: &egui::Context) {
         self.settings.save(&self.opts.data_dir);
-        crate::i18n::set_english(self.settings.english);
+        crate::i18n::set_lang(self.settings.lang);
         apply_style(ctx, &self.settings);
         self.history_at = None;
         self.stats_at = None;
@@ -430,6 +478,7 @@ impl App {
         self.job = None;
         match r {
             JobResult::Started(node, shares) => {
+                node.set_manual_port(self.settings.manual_port);
                 self.node = Some(node);
                 self.shares_to_show = shares;
                 self.shares_confirmed = false;
@@ -701,7 +750,7 @@ fn describe_lock(lock: u32) -> String {
 
 /// Montant pour un tableur : virgule décimale, sans « NFR ».
 fn csv_amount(units: u64) -> String {
-    let sep = if crate::i18n::en() { '.' } else { ',' };
+    let sep = crate::i18n::decimal_sep();
     format!("{}{sep}{:08}", units / crate::config::MIN_UNIT, units % crate::config::MIN_UNIT)
 }
 
@@ -733,14 +782,12 @@ impl App {
                     ui.label(RichText::new(t("Monnaie numérique post-quantique", "Post-quantum digital currency")).color(p.grey));
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.add_space(ui.available_width() / 2.0 - 70.0);
-                        if ui.selectable_label(!self.settings.english, "Français").clicked() {
-                            self.settings.english = false;
-                            self.save_settings(ctx);
-                        }
-                        if ui.selectable_label(self.settings.english, "English").clicked() {
-                            self.settings.english = true;
-                            self.save_settings(ctx);
+                        ui.add_space(((ui.available_width() - 500.0) / 2.0).max(0.0));
+                        for l in crate::i18n::Lang::ALL {
+                            if ui.selectable_label(self.settings.lang == l, l.name()).clicked() {
+                                self.settings.lang = l;
+                                self.save_settings(ctx);
+                            }
                         }
                     });
                     ui.add_space(14.0);
@@ -1098,9 +1145,16 @@ impl App {
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
                     ui.set_max_width(460.0);
-                    for (fr, en) in [
+                    let mine = self.node.as_ref().is_none_or(|n| n.mining.load(std::sync::atomic::Ordering::Relaxed));
+                    let minage = if mine {
                         ("Ton minage est déjà en route. Laisse NumFranc ouvert : une récompense devient dépensable après 100 blocs.",
-                         "Mining is already running. Keep NumFranc open: a reward becomes spendable after 100 blocks."),
+                         "Mining is already running. Keep NumFranc open: a reward becomes spendable after 100 blocks.")
+                    } else {
+                        ("Le minage est arrêté. Pour gagner des NFR, coche « Miner avec cet ordinateur » sur l'accueil et laisse NumFranc ouvert.",
+                         "Mining is off. To earn NFR, tick « Mine with this computer » on the Home screen and keep NumFranc open.")
+                    };
+                    for (fr, en) in [
+                        minage,
                         ("NumFranc ouvre tout seul le port sur ta box et cherche les autres nœuds. L'état est dans Réglages > Connexion.",
                          "NumFranc opens the port on your router by itself and looks for other nodes. Status: Settings > Connection."),
                         ("Les liens de paiement nfr:… s'ouvrent dans NumFranc, déjà rempli. Rien ne part sans ton code de dépense.",
@@ -1396,7 +1450,7 @@ impl App {
                 ui.checkbox(&mut self.send.lock, t("Verrouiller jusqu'à une date", "Lock until a date"));
                 if self.send.lock {
                     ui.add(egui::TextEdit::singleline(&mut self.send.lock_text).desired_width(80.0));
-                    ui.label(RichText::new(t("ex. 30min, 12h, 3j, 2sem, 1mois, 1an", "e.g. 30min, 12h, 3j (days), 2sem (weeks), 1mois, 1an")).color(p.grey));
+                    ui.label(RichText::new(t("ex. 30min, 12h, 3j, 2sem, 1mois, 1an", "e.g. 30min, 12h, 3d, 2w, 1mo, 1y")).color(p.grey));
                 }
             });
             let lock = if self.send.lock { Some(parse_lock_duration(&self.send.lock_text)) } else { None };
@@ -1839,8 +1893,9 @@ impl App {
             ui.label(RichText::new(t("Apparence", "Appearance")).strong());
             ui.horizontal(|ui| {
                 ui.label(t("Langue", "Language"));
-                changed |= ui.selectable_value(&mut self.settings.english, false, "Français").changed();
-                changed |= ui.selectable_value(&mut self.settings.english, true, "English").changed();
+                for l in crate::i18n::Lang::ALL {
+                    changed |= ui.selectable_value(&mut self.settings.lang, l, l.name()).changed();
+                }
             });
             ui.horizontal(|ui| {
                 ui.label(t("Thème", "Theme"));
@@ -1886,11 +1941,22 @@ impl App {
                 changed |= ui.add(egui::Slider::new(&mut self.settings.cores_day, 0..=cores).text(t("cœurs le jour (0 = arrêt)", "cores during the day (0 = off)"))).changed();
             });
         });
-        if port.is_some() {
+        if let Some(etat) = port.clone() {
+            let aide = self.node.as_ref().and_then(|n| n.aide_box());
+            let mut manuel = self.settings.manual_port;
+            let mut manuel_change = false;
             card(ui, &p, |ui| {
                 ui.label(RichText::new(t("Connexion", "Connection")).strong());
                 port_lines(ui, &p, &port, true);
+                manuel_change = port_guide(ui, &p, &etat, &aide, &mut manuel);
             });
+            if manuel_change {
+                self.settings.manual_port = manuel;
+                if let Some(n) = &self.node {
+                    n.set_manual_port(manuel);
+                }
+                changed = true;
+            }
         }
         card(ui, &p, |ui| {
             ui.label(RichText::new(t("Mises à jour", "Updates")).strong());

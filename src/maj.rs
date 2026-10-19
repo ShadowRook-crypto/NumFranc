@@ -91,16 +91,26 @@ pub fn verifier(dossier: &Path) -> Result<Resultat, String> {
     analyser(&manifeste, &signature, &RELEASE_PUBLIC_KEY, env!("CARGO_PKG_VERSION"))
 }
 
-/// Ouvre la page de téléchargement dans le navigateur (adresse fixe, sans interpréteur de commandes).
-pub fn ouvrir_page() {
-    let (prog, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
-        ("open", &[PAGE_TELECHARGEMENT])
+/// Ouvre une adresse web dans le navigateur (sans interpréteur de commandes).
+fn ouvrir_adresse(url: &str) {
+    let (prog, args): (&str, [&str; 1]) = if cfg!(target_os = "macos") {
+        ("open", [url])
     } else if cfg!(target_os = "windows") {
-        ("explorer", &[PAGE_TELECHARGEMENT])
+        ("explorer", [url])
     } else {
-        ("xdg-open", &[PAGE_TELECHARGEMENT])
+        ("xdg-open", [url])
     };
     let _ = std::process::Command::new(crate::install::system_tool(prog)).args(args).spawn();
+}
+
+/// Ouvre la page de téléchargement dans le navigateur (adresse fixe).
+pub fn ouvrir_page() {
+    ouvrir_adresse(PAGE_TELECHARGEMENT);
+}
+
+/// Ouvre la page d'administration de la box (adresse locale, donnée sous forme d'adresse IPv4 : rien d'autre ne passe).
+pub fn ouvrir_page_box(ip: std::net::Ipv4Addr) {
+    ouvrir_adresse(&format!("http://{ip}/"));
 }
 
 #[cfg(test)]
