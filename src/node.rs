@@ -429,7 +429,7 @@ impl Node {
     }
 
     pub fn connect_to(self: Arc<Self>, target: String) {
-        // Nœud d'amorçage écrit sans port (ex. « numfranc.duckdns.org ») : on essaie les ports habituels.
+        // Nœud d'amorçage écrit sans port (ex. « monnoeud.example ») : on essaie les ports habituels.
         if !target.contains(':') {
             let Some(ip) = (target.as_str(), 0).to_socket_addrs().ok().and_then(|mut a| a.next()).map(|a| a.ip()) else { return };
             // C'est notre propre adresse publique (on est chez le nœud d'amorçage) : inutile de se joindre soi-même.
@@ -880,6 +880,14 @@ impl Node {
     }
 
     pub fn submit_tx(&self, tx: Transaction) -> Result<(), String> {
+        // Faille connue dans cette version (signalée dans la liste signée) : on protège les fonds.
+        if crate::maj::version_dangereuse() {
+            return Err(crate::i18n::t(
+                "envoi bloqué : cette version a une faille de sécurité connue. Installe la mise à jour (Réglages > Mises à jour), puis réessaie.",
+                "sending blocked: this version has a known security flaw. Install the update (Settings > Updates), then try again.",
+            )
+            .into());
+        }
         {
             let c = self.chain.lock().unwrap();
             self.mempool.lock().unwrap().accept(tx.clone(), &c)?;
@@ -1180,8 +1188,10 @@ impl Node {
                 log(crate::i18n::t("[ ] Annuaire mondial : aucun autre nœud pour l'instant, nouvelle recherche régulièrement.", "[ ] World directory: no other node yet, searching again regularly."));
             }
             round += 1;
-            // Recherche fréquente au début, puis toutes les 10 minutes.
-            let wait = if round < 5 { 60 } else { 600 };
+            // Recherche toutes les 30 s pendant les 10 premières minutes, puis toutes les 5 minutes tant
+            // qu'on a moins de 2 pairs, et toutes les 10 minutes ensuite.
+            let pairs = self.peers.lock().unwrap().len();
+            let wait = if round < 20 { 30 } else if pairs < 2 { 300 } else { 600 };
             std::thread::sleep(Duration::from_secs(wait));
         }
     }

@@ -226,6 +226,43 @@ enum JobResult {
     Text(String, String),
     WrongPassword(String),
     Err(String),
+    /// Mise à jour installée : NumFranc se ferme, la nouvelle version se lance d'elle-même.
+    Quitter,
+}
+
+/// État de la mise à jour automatique (vérifiée au démarrage puis toutes les 6 heures).
+#[derive(Clone, Debug, Default)]
+enum EtatMaj {
+    #[default]
+    Rien,
+    Telechargement(String),
+    /// Installeur téléchargé ET vérifié (signature de la liste + empreinte du fichier).
+    Prete(String, PathBuf),
+    /// Version plus récente, mais NumFranc ne peut pas s'installer tout seul ici (lancé depuis le dossier téléchargé).
+    Disponible(String),
+    Erreur(String),
+}
+
+/// Un tour de mise à jour automatique : vérifier, puis télécharger et vérifier l'installeur.
+fn maj_tour(dir: &std::path::Path, etat: &Arc<std::sync::Mutex<EtatMaj>>) {
+    let Ok(info) = crate::maj::verifier_tout(dir) else { return };
+    if !info.nouvelle {
+        *etat.lock().unwrap() = EtatMaj::Rien;
+        return;
+    }
+    if !crate::maj::peut_installer() {
+        *etat.lock().unwrap() = EtatMaj::Disponible(info.version.clone());
+        return;
+    }
+    if matches!(&*etat.lock().unwrap(), EtatMaj::Prete(v, f) if *v == info.version && f.exists()) {
+        return;
+    }
+    *etat.lock().unwrap() = EtatMaj::Telechargement(info.version.clone());
+    let r = match crate::maj::telecharger_installeur(dir, &info) {
+        Ok(f) => EtatMaj::Prete(info.version.clone(), f),
+        Err(e) => EtatMaj::Erreur(e),
+    };
+    *etat.lock().unwrap() = r;
 }
 
 struct Job {
@@ -382,6 +419,8 @@ struct App {
     /// Vérification des mises à jour en cours (réponse attendue du fil de travail) et dernier résultat.
     maj_attente: Option<std::sync::mpsc::Receiver<Result<crate::maj::Resultat, String>>>,
     maj: Option<Result<crate::maj::Resultat, String>>,
+    maj_auto: Arc<std::sync::Mutex<EtatMaj>>,
+    maj_lancee: bool,
     /// Écran « Bienvenue » à montrer (jusqu'à ce qu'il soit fermé une fois).
     bienvenue: bool,
 }
@@ -442,6 +481,8 @@ impl App {
             plus: Default::default(),
             maj_attente: None,
             maj: None,
+            maj_auto: Arc::new(std::sync::Mutex::new(EtatMaj::Rien)),
+            maj_lancee: false,
             bienvenue: crate::install::bienvenue_a_montrer(&opts_dir),
             opts,
         }
@@ -449,6 +490,58 @@ impl App {
 
     fn pal(&self) -> Pal {
         palette(&self.settings)
+    }
+
+    /// Bandeau en haut de la fenêtre : mise à jour prête (un clic) ou alerte de sécurité.
+    fn maj_bandeau(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let etat = self.maj_auto.lock().unwrap().clone();
+        let danger = crate::maj::version_dangereuse();
+        if !danger && matches!(etat, EtatMaj::Rien | EtatMaj::Telechargement(_) | EtatMaj::Erreur(_)) {
+            return;
+        }
+        let p = self.pal();
+        let mut installer = None;
+        egui::Panel::top("mise-a-jour").show(ui, |ui| {
+            ui.add_space(4.0);
+            egui::Frame::default().fill(if danger { p.red.gamma_multiply(0.25) } else { p.accent.gamma_multiply(0.18) }).corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    if danger {
+                        ui.label(RichText::new(t(
+                            "Mise à jour de sécurité urgente : cette version a une faille connue. Les envois de NFR sont bloqués jusqu'à la mise à jour (recevoir et miner continuent).",
+                            "Urgent security update: this version has a known flaw. Sending NFR is blocked until you update (receiving and mining continue).",
+                        ))
+                        .strong()
+                        .color(p.red));
+                    }
+                    match &etat {
+                        EtatMaj::Prete(v, f) => {
+                            ui.label(tf!("NumFranc {v} est prêt : signature de l'auteur et fichier vérifiés.", "NumFranc {v} is ready: author's signature and file verified."));
+                            if ui.button(RichText::new(t("Installer et relancer", "Install and restart")).strong()).clicked() {
+                                installer = Some(f.clone());
+                            }
+                        }
+                        EtatMaj::Disponible(v) => {
+                            ui.label(tf!("NumFranc {v} est disponible.", "NumFranc {v} is available."));
+                            if ui.button(t("Ouvrir la page de téléchargement", "Open the download page")).clicked() {
+                                crate::maj::ouvrir_page();
+                            }
+                        }
+                        EtatMaj::Telechargement(v) => {
+                            ui.spinner();
+                            ui.label(tf!("Téléchargement de NumFranc {v}…", "Downloading NumFranc {v}…"));
+                        }
+                        _ => {}
+                    }
+                });
+            });
+            ui.add_space(2.0);
+        });
+        if let Some(f) = installer {
+            self.spawn(t("Installation de la mise à jour…", "Installing the update…"), ctx, move || match crate::maj::installer(&f) {
+                Ok(()) => JobResult::Quitter,
+                Err(e) => JobResult::Err(e),
+            });
+        }
     }
 
     /// Active ou coupe « Toujours allumé » : réglage enregistré, puis gardien installé ou retiré.
@@ -536,6 +629,7 @@ impl App {
                 self.error = Some(e);
             }
             JobResult::Err(e) => self.error = Some(e),
+            JobResult::Quitter => std::process::exit(0),
         }
     }
 
@@ -1248,6 +1342,19 @@ impl App {
                 }
             });
         }
+        if !self.maj_lancee {
+            self.maj_lancee = true;
+            let (dir, etat, c) = (self.opts.data_dir.clone(), self.maj_auto.clone(), ctx.clone());
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(30));
+                loop {
+                    maj_tour(&dir, &etat);
+                    c.request_repaint();
+                    std::thread::sleep(Duration::from_secs(6 * 3600));
+                }
+            });
+        }
+        self.maj_bandeau(ui, ctx);
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| match self.tab {
                 Tab::Accueil => self.home_tab(ui),
@@ -2042,6 +2149,15 @@ impl App {
         }
         card(ui, &p, |ui| {
             ui.label(RichText::new(t("Mises à jour", "Updates")).strong());
+            ui.label(RichText::new(t(
+                "NumFranc vérifie tout seul au démarrage puis toutes les 6 heures. Une nouvelle version n'est proposée que si la signature de l'auteur et l'empreinte du fichier sont bonnes.",
+                "NumFranc checks by itself at startup and then every 6 hours. A new version is offered only if the author's signature and the file's fingerprint are correct.",
+            ))
+            .small()
+            .color(p.grey));
+            if let EtatMaj::Erreur(e) = &*self.maj_auto.lock().unwrap() {
+                ui.label(RichText::new(tf!("Dernière mise à jour automatique : {e}", "Last automatic update: {e}")).small().color(p.red));
+            }
             ui.label(tf!(
                 "Version installée : {}. La vérification télécharge la liste signée de la dernière version et contrôle sa signature avant de te la proposer.",
                 "Installed version: {}. The check downloads the signed list of the latest version and verifies its signature before offering it.",
@@ -2062,8 +2178,15 @@ impl App {
             if self.maj_attente.is_none() && ui.button(t("Vérifier les mises à jour", "Check for updates")).clicked() {
                 let (tx, rx) = std::sync::mpsc::channel();
                 let dossier = self.opts.data_dir.clone();
+                let etat = self.maj_auto.clone();
                 std::thread::spawn(move || {
-                    let _ = tx.send(crate::maj::verifier(&dossier));
+                    let r = crate::maj::verifier(&dossier);
+                    let nouvelle = matches!(r, Ok(crate::maj::Resultat::Nouvelle(_)));
+                    let _ = tx.send(r);
+                    // Nouvelle version : téléchargement et vérification tout de suite (bandeau en haut).
+                    if nouvelle {
+                        maj_tour(&dossier, &etat);
+                    }
                 });
                 self.maj_attente = Some(rx);
                 self.maj = None;
@@ -2071,7 +2194,12 @@ impl App {
             match &self.maj {
                 Some(Ok(crate::maj::Resultat::Nouvelle(v))) => {
                     ui.colored_label(p.green, tf!("Version {v} disponible — signature de l'auteur vérifiée", "Version {v} available — author's signature verified"));
-                    if ui.button(t("Ouvrir la page de téléchargement", "Open the download page")).clicked() {
+                    if crate::maj::peut_installer() {
+                        ui.label(t(
+                            "Elle se télécharge et se vérifie toute seule : le bouton « Installer et relancer » apparaît en haut de la fenêtre.",
+                            "It downloads and checks itself: the « Install and restart » button appears at the top of the window.",
+                        ));
+                    } else if ui.button(t("Ouvrir la page de téléchargement", "Open the download page")).clicked() {
                         crate::maj::ouvrir_page();
                     }
                 }

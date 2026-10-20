@@ -520,3 +520,13 @@ NumFranc will stop when you close the window.	NumFranc wird beendet, wenn du das
 Recommended: NumFranc starts with the computer, keeps running when you close the window and restarts by itself if it stops. The network stays strong and you keep mining.	Empfohlen: NumFranc startet mit dem Computer, läuft weiter, wenn du das Fenster schließt, und startet sich selbst neu, wenn es stoppt. Das Netzwerk bleibt stark und du minst weiter.
 With the window closed, it mines to your receiving address: your wallet stays closed and encrypted, no password is kept.	Bei geschlossenem Fenster mint es auf deine Empfangsadresse: Deine Wallet bleibt geschlossen und verschlüsselt, kein Passwort wird gespeichert.
 You can change your mind at any time: Settings > Always on. The number of cores (day and night) is set in the same place.	Du kannst deine Meinung jederzeit ändern: Einstellungen > Immer an. Die Anzahl der Kerne (Tag und Nacht) stellst du an derselben Stelle ein.
+Urgent security update: this version has a known flaw. Sending NFR is blocked until you update (receiving and mining continue).	Dringendes Sicherheitsupdate: Diese Version hat eine bekannte Schwachstelle. Das Senden von NFR ist bis zum Update gesperrt (Empfangen und Mining laufen weiter).
+NumFranc {v} is ready: author's signature and file verified.	NumFranc {v} ist bereit: Signatur des Autors und Datei geprüft.
+Install and restart	Installieren und neu starten
+NumFranc {v} is available.	NumFranc {v} ist verfügbar.
+Downloading NumFranc {v}…	NumFranc {v} wird heruntergeladen…
+Installing the update…	Update wird installiert…
+NumFranc checks by itself at startup and then every 6 hours. A new version is offered only if the author's signature and the file's fingerprint are correct.	NumFranc prüft selbstständig beim Start und dann alle 6 Stunden. Eine neue Version wird nur angeboten, wenn die Signatur des Autors und der Fingerabdruck der Datei stimmen.
+Last automatic update: {e}	Letztes automatisches Update: {e}
+It downloads and checks itself: the « Install and restart » button appears at the top of the window.	Sie wird automatisch heruntergeladen und geprüft: Die Schaltfläche „Installieren und neu starten“ erscheint oben im Fenster.
+sending blocked: this version has a known security flaw. Install the update (Settings > Updates), then try again.	Senden gesperrt: Diese Version hat eine bekannte Sicherheitslücke. Installiere das Update (Einstellungen > Updates) und versuche es erneut.

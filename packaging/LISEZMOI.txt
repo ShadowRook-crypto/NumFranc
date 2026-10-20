@@ -94,8 +94,18 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. NOUVEAUTÉS DE LA v1.2.1
-   - Premier nœud d'amorçage : numfranc.duckdns.org. Un nouvel ordinateur s'y connecte en quelques secondes,
+6. NOUVEAUTÉS DE LA v1.2.2
+   - Mise à jour automatique : NumFranc vérifie tout seul au démarrage puis toutes les 6 heures. Une nouvelle
+     version est téléchargée puis vérifiée deux fois (signature de l'auteur, puis empreinte SHA3 du fichier) ;
+     un bandeau « Installer et relancer » apparaît en haut : un clic, et NumFranc se remplace et redémarre.
+     (Linux : le mot de passe de l'ordinateur est demandé. Lancé depuis le dossier téléchargé : seulement la page.)
+   - Alerte de sécurité : si l'auteur signale une faille, les versions concernées affichent un bandeau rouge
+     et bloquent les envois de NFR jusqu'à la mise à jour (recevoir et miner continuent).
+   - Le nœud d'amorçage de la v1.2.1 est retiré : les nouveaux trouvent le réseau par l'annuaire mondial,
+     maintenant interrogé toutes les 30 secondes au démarrage.
+
+   NOUVEAUTÉS DE LA v1.2.1
+   - Premier nœud d'amorçage (retiré en v1.2.2). Un nouvel ordinateur s'y connecte en quelques secondes,
      puis trouve les autres tout seul (annuaire mondial, échanges d'adresses).
    - Un même ordinateur de votre maison n'apparaît plus plusieurs fois dans les pairs connectés.
    - Le voyant vert « un autre nœud s'est connecté à toi depuis Internet » ne compte plus vos propres ordinateurs.

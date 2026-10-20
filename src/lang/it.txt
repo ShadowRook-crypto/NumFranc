@@ -520,3 +520,13 @@ NumFranc will stop when you close the window.	NumFranc si fermerà quando chiude
 Recommended: NumFranc starts with the computer, keeps running when you close the window and restarts by itself if it stops. The network stays strong and you keep mining.	Consigliato: NumFranc si avvia con il computer, continua quando chiudi la finestra e si riavvia da solo se si ferma. La rete resta solida e tu continui a fare mining.
 With the window closed, it mines to your receiving address: your wallet stays closed and encrypted, no password is kept.	A finestra chiusa fa mining verso il tuo indirizzo di ricezione: il portafoglio resta chiuso e cifrato, nessuna password viene conservata.
 You can change your mind at any time: Settings > Always on. The number of cores (day and night) is set in the same place.	Puoi cambiare idea in qualsiasi momento: Impostazioni > Sempre acceso. Il numero di core (giorno e notte) si imposta nello stesso posto.
+Urgent security update: this version has a known flaw. Sending NFR is blocked until you update (receiving and mining continue).	Aggiornamento di sicurezza urgente: questa versione ha una falla nota. L'invio di NFR è bloccato fino all'aggiornamento (ricezione e mining continuano).
+NumFranc {v} is ready: author's signature and file verified.	NumFranc {v} è pronto: firma dell'autore e file verificati.
+Install and restart	Installa e riavvia
+NumFranc {v} is available.	NumFranc {v} è disponibile.
+Downloading NumFranc {v}…	Download di NumFranc {v}…
+Installing the update…	Installazione dell'aggiornamento…
+NumFranc checks by itself at startup and then every 6 hours. A new version is offered only if the author's signature and the file's fingerprint are correct.	NumFranc controlla da solo all'avvio e poi ogni 6 ore. Una nuova versione viene proposta solo se la firma dell'autore e l'impronta del file sono corrette.
+Last automatic update: {e}	Ultimo aggiornamento automatico: {e}
+It downloads and checks itself: the « Install and restart » button appears at the top of the window.	Si scarica e si verifica da sola: il pulsante «Installa e riavvia» appare in alto nella finestra.
+sending blocked: this version has a known security flaw. Install the update (Settings > Updates), then try again.	invio bloccato: questa versione ha una falla di sicurezza nota. Installa l'aggiornamento (Impostazioni > Aggiornamenti), poi riprova.

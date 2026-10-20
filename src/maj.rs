@@ -91,6 +91,223 @@ pub fn verifier(dossier: &Path) -> Result<Resultat, String> {
     analyser(&manifeste, &signature, &RELEASE_PUBLIC_KEY, env!("CARGO_PKG_VERSION"))
 }
 
+// ---------------------------------------------------------------------------
+// Mise à jour automatique
+// ---------------------------------------------------------------------------
+//
+// 1. Toutes les 6 heures (et au démarrage), on lit le manifeste signé de la dernière version.
+// 2. S'il y a plus récent, on télécharge l'installeur de cet ordinateur, puis on vérifie que son
+//    empreinte SHA3-512 est celle écrite dans le manifeste (lui-même signé) : un fichier trafiqué
+//    est effacé et jamais installé.
+// 3. L'utilisateur clique sur « Installer et relancer » : NumFranc remplace l'app et redémarre.
+// 4. La 2e ligne du manifeste peut donner une « version minimale sûre » : en dessous, NumFranc
+//    affiche une alerte rouge et bloque les envois de NFR (recevoir et miner continuent).
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static DANGEREUSE: AtomicBool = AtomicBool::new(false);
+
+/// Cette version a-t-elle été déclarée dangereuse par l'auteur (faille connue) ?
+pub fn version_dangereuse() -> bool {
+    DANGEREUSE.load(Ordering::Relaxed)
+}
+
+/// Ce que dit le manifeste signé de la dernière version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Info {
+    pub version: String,
+    pub nouvelle: bool,
+    /// Version minimale sûre (None ou « 0 » : pas d'alerte).
+    pub minimale: Option<String>,
+    manifeste: String,
+}
+
+impl Info {
+    /// La version installée est-elle en dessous de la version minimale sûre ?
+    pub fn dangereuse(&self) -> bool {
+        self.minimale.as_deref().is_some_and(|m| plus_recente(m, env!("CARGO_PKG_VERSION")))
+    }
+}
+
+/// « # Version minimale sûre 1.2.2 » (2e ligne du manifeste signé).
+pub fn version_minimale(manifeste: &str) -> Option<String> {
+    manifeste
+        .lines()
+        .take(5)
+        .find_map(|l| l.strip_prefix("# Version minimale sûre "))
+        .map(str::trim)
+        .filter(|v| !v.is_empty() && v.len() <= 20 && v.chars().all(|c| c.is_ascii_digit() || c == '.') && *v != "0")
+        .map(str::to_string)
+}
+
+/// Empreinte de l'installeur `nom` dans le manifeste (ligne « HEX  installeurs/NOM »).
+pub fn empreinte(manifeste: &str, nom: &str) -> Option<String> {
+    let cible = format!("installeurs/{nom}");
+    manifeste.lines().filter(|l| !l.starts_with('#')).find_map(|l| {
+        let (h, chemin) = l.split_once("  ")?;
+        (chemin == cible && h.len() == 128 && h.chars().all(|c| c.is_ascii_hexdigit())).then(|| h.to_ascii_lowercase())
+    })
+}
+
+/// Nom de l'installeur qui convient à cet ordinateur.
+pub fn nom_installeur() -> Option<&'static str> {
+    if cfg!(target_os = "macos") {
+        Some("NumFranc-macos.dmg")
+    } else if cfg!(target_os = "windows") {
+        Some("NumFranc-windows-installation.exe")
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        Some("NumFranc-linux-amd64.deb")
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        Some("NumFranc-linux-arm64.deb")
+    } else {
+        None
+    }
+}
+
+/// NumFranc peut-il se mettre à jour tout seul ici ? (installé par l'installeur officiel, pas lancé
+/// depuis le dossier téléchargé). Sinon, on propose seulement la page de téléchargement.
+pub fn peut_installer() -> bool {
+    nom_installeur().is_some() && crate::install::installe_par_paquet()
+}
+
+/// Vérifie le manifeste signé de la dernière version et garde son texte (pour les empreintes).
+pub fn verifier_tout(dossier: &Path) -> Result<Info, String> {
+    let tmp = dossier.join("maj");
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    let manifeste = telecharger("SHA3SUMS.txt", &tmp.join("SHA3SUMS.txt"))?;
+    let signature = telecharger("SHA3SUMS.txt.sig", &tmp.join("SHA3SUMS.txt.sig"))
+        .map_err(|_| "la dernière version n'est pas encore signée : réessaie plus tard".to_string())?;
+    let r = analyser(&manifeste, &signature, &RELEASE_PUBLIC_KEY, env!("CARGO_PKG_VERSION"))?;
+    let texte = String::from_utf8(manifeste).map_err(|_| "manifeste illisible".to_string())?;
+    let (version, nouvelle) = match r {
+        Resultat::Nouvelle(v) => (v, true),
+        Resultat::AJour(v) => (v, false),
+    };
+    let info = Info { version, nouvelle, minimale: version_minimale(&texte), manifeste: texte };
+    DANGEREUSE.store(info.dangereuse(), Ordering::SeqCst);
+    Ok(info)
+}
+
+/// Télécharge l'installeur de la nouvelle version et vérifie son empreinte (manifeste signé).
+/// Renvoie le chemin du fichier vérifié.
+pub fn telecharger_installeur(dossier: &Path, info: &Info) -> Result<PathBuf, String> {
+    let nom = nom_installeur().ok_or("pas d'installeur pour ce système")?;
+    let attendue = empreinte(&info.manifeste, nom).ok_or("installeur absent de la liste signée")?;
+    let dir = dossier.join("maj");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let fichier = dir.join(nom);
+    // Déjà téléchargé et vérifié ?
+    if let Ok(d) = std::fs::read(&fichier) {
+        if crate::encoding::hex(&crate::hashing::sha3_512(&d)) == attendue {
+            return Ok(fichier);
+        }
+    }
+    let url = format!("{BASE}{nom}");
+    let ok = std::process::Command::new(crate::install::system_tool("curl"))
+        .args(["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "900", "--max-filesize", "300000000", "-o"])
+        .arg(&fichier)
+        .arg(&url)
+        .stdin(std::process::Stdio::null())
+        .status()
+        .map_err(|_| "curl est introuvable sur cet ordinateur".to_string())?;
+    if !ok.success() {
+        let _ = std::fs::remove_file(&fichier);
+        return Err(format!("téléchargement de {nom} impossible"));
+    }
+    let d = std::fs::read(&fichier).map_err(|e| e.to_string())?;
+    if crate::encoding::hex(&crate::hashing::sha3_512(&d)) != attendue {
+        let _ = std::fs::remove_file(&fichier);
+        return Err("fichier téléchargé différent de celui signé par l'auteur : effacé, rien n'est installé".into());
+    }
+    Ok(fichier)
+}
+
+/// Installe le fichier vérifié et prépare le redémarrage. En cas de succès, l'appelant doit quitter
+/// NumFranc tout de suite : la nouvelle version se lance d'elle-même.
+pub fn installer(fichier: &Path) -> Result<(), String> {
+    if !peut_installer() {
+        return Err("NumFranc n'a pas été installé avec l'installeur officiel : utilise la page de téléchargement".into());
+    }
+    installer_systeme(fichier)
+}
+
+#[cfg(target_os = "macos")]
+fn installer_systeme(fichier: &Path) -> Result<(), String> {
+    use std::process::Command;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = exe.canonicalize().unwrap_or(exe);
+    let app = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).ok_or("app NumFranc introuvable")?.to_path_buf();
+    let montage = fichier.with_extension("montage");
+    let _ = std::fs::create_dir_all(&montage);
+    let ok = Command::new("/usr/bin/hdiutil").args(["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint"]).arg(&montage).arg(fichier).status();
+    if !ok.is_ok_and(|s| s.success()) {
+        return Err("ouverture du .dmg impossible".into());
+    }
+    let source = montage.join("NumFranc.app");
+    let nouvelle = app.with_extension("app-maj");
+    let _ = std::fs::remove_dir_all(&nouvelle);
+    let copie = source.exists() && Command::new("/usr/bin/ditto").arg(&source).arg(&nouvelle).status().is_ok_and(|s| s.success());
+    let _ = Command::new("/usr/bin/hdiutil").args(["detach", "-quiet"]).arg(&montage).status();
+    let _ = std::fs::remove_dir(&montage);
+    if !copie {
+        let _ = std::fs::remove_dir_all(&nouvelle);
+        return Err("copie de la nouvelle app impossible (dossier Applications protégé ?)".into());
+    }
+    let ancienne = app.with_extension("app-ancienne");
+    let _ = std::fs::remove_dir_all(&ancienne);
+    std::fs::rename(&app, &ancienne).map_err(|e| format!("remplacement impossible : {e}"))?;
+    if let Err(e) = std::fs::rename(&nouvelle, &app) {
+        let _ = std::fs::rename(&ancienne, &app);
+        return Err(format!("remplacement impossible : {e}"));
+    }
+    let _ = std::fs::remove_dir_all(&ancienne);
+    let _ = std::fs::remove_file(fichier);
+    // Le gardien « Toujours allumé » repart avec la nouvelle version, puis la fenêtre se rouvre.
+    let uid = Command::new("/usr/bin/id").arg("-u").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let _ = Command::new("/bin/launchctl").args(["kickstart", "-k", &format!("gui/{uid}/org.numfranc.gardien")]).status();
+    Command::new("/bin/sh").args(["-c", "sleep 2; /usr/bin/open \"$1\"", "sh"]).arg(&app).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn installer_systeme(fichier: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let (f, e) = (fichier.display().to_string(), exe.display().to_string());
+    if f.contains('"') || e.contains('"') {
+        return Err("chemin invalide".into());
+    }
+    // L'installeur (silencieux) arrête NumFranc, remplace le programme et relance le gardien ;
+    // ensuite la fenêtre se rouvre.
+    let cmd = crate::install::system_tool("cmd");
+    std::process::Command::new(cmd)
+        .raw_arg(format!("/c \"\"{f}\" /S & start \"\" \"{e}\"\""))
+        .creation_flags(0x0800_0000 | 0x0000_0008)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn installer_systeme(fichier: &Path) -> Result<(), String> {
+    use std::process::Command;
+    // Le système demande le mot de passe de l'ordinateur (fenêtre de pkexec).
+    let st = Command::new("pkexec").arg("/usr/bin/dpkg").arg("-i").arg(fichier).status().map_err(|_| "pkexec introuvable".to_string())?;
+    if !st.success() {
+        return Err("installation annulée ou refusée (mot de passe ?)".into());
+    }
+    let _ = std::fs::remove_file(fichier);
+    let _ = Command::new("systemctl").args(["--user", "restart", "numfranc-gardien.service"]).status();
+    Command::new("/usr/bin/numfranc").stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn installer_systeme(_fichier: &Path) -> Result<(), String> {
+    Err("système non pris en charge".into())
+}
+
 /// Ouvre une adresse web dans le navigateur (sans interpréteur de commandes).
 fn ouvrir_adresse(url: &str) {
     let (prog, args): (&str, [&str; 1]) = if cfg!(target_os = "macos") {
@@ -122,6 +339,21 @@ mod tests {
     fn cle_publique_identique_au_fichier_publie() {
         let txt = include_str!("../packaging/cle-publique.txt").trim();
         assert_eq!(crate::encoding::from_hex(txt).unwrap(), RELEASE_PUBLIC_KEY.to_vec());
+    }
+
+    #[test]
+    fn manifeste_version_minimale_et_empreintes() {
+        let h = "a".repeat(128);
+        let m = format!("# NumFranc 1.3.0\n# Version minimale sûre 1.2.2\n{h}  installeurs/NumFranc-macos.dmg\n{h}  bin/x\n");
+        assert_eq!(version_minimale(&m).as_deref(), Some("1.2.2"));
+        assert_eq!(version_minimale("# NumFranc 1.3.0\n# Version minimale sûre 0\n"), None);
+        assert_eq!(version_minimale("# NumFranc 1.3.0\n"), None);
+        assert_eq!(empreinte(&m, "NumFranc-macos.dmg").as_deref(), Some(h.as_str()));
+        assert_eq!(empreinte(&m, "x"), None);
+        let info = Info { version: "1.3.0".into(), nouvelle: true, minimale: Some("999.0.0".into()), manifeste: m.clone() };
+        assert!(info.dangereuse());
+        let info = Info { minimale: Some("0.1.0".into()), ..info };
+        assert!(!info.dangereuse());
     }
 
     #[test]

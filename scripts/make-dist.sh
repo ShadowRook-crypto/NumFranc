@@ -15,7 +15,11 @@ cp "$ROOT/scripts/sha3sum.py" "$OUT/NumFranc/sha3sum.py"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)"
 # Les installeurs (.dmg, .exe, .deb) sont publiés à part, mais leurs empreintes sont dans le même fichier
 # SHA3SUMS.txt : la signature les couvre donc aussi (lignes « installeurs/NOM »).
-( cd "$OUT/NumFranc" && { echo "# NumFranc $VERSION"; python3 sha3sum.py .; } > SHA3SUMS.txt )
+# Deuxième ligne : la « version minimale sûre » (scripts/version-minimale-sure.txt, 0 = aucune alerte).
+# Si une faille est découverte, on y écrit la version qui la corrige : toutes les versions plus anciennes
+# affichent alors une alerte rouge et bloquent les envois jusqu'à la mise à jour. Couverte par la signature.
+MINI="$(tr -dc '0-9.' < "$ROOT/scripts/version-minimale-sure.txt" 2>/dev/null || true)"
+( cd "$OUT/NumFranc" && { echo "# NumFranc $VERSION"; echo "# Version minimale sûre ${MINI:-0}"; python3 sha3sum.py .; } > SHA3SUMS.txt )
 if [ -d "$ROOT/dist-installeurs" ]; then
   python3 - "$ROOT/dist-installeurs" >> "$OUT/NumFranc/SHA3SUMS.txt" <<'PYEOF'
 import hashlib, os, sys
