@@ -104,8 +104,12 @@ pub const STARTUP_SYNC_SECS: u64 = 20;
 pub const MAX_INBOUND: usize = 32;
 /// Nombre maximal de blocs envoyés en réponse à une demande de synchronisation.
 pub const MAX_BLOCKS_PER_REPLY: usize = 500;
-/// Nœuds d'amorçage : à remplir avec l'adresse publique du nœud permanent (ex. "monserveur.fr:6910").
-pub const DEFAULT_SEEDS: &[&str] = &[];
+/// Nœuds d'amorçage : noms fixes de nœuds toujours allumés. Les nouveaux s'y connectent d'abord, puis
+/// le réseau s'organise tout seul (annuaire, échanges d'adresses). Sans port, les ports de SEED_PORTS sont
+/// essayés dans l'ordre (ce sont ceux que NumFranc demande aux box, voir node.rs).
+pub const DEFAULT_SEEDS: &[&str] = &["numfranc.duckdns.org"];
+/// Ports essayés pour un nœud d'amorçage écrit sans port.
+pub const SEED_PORTS: [u16; 6] = [6910, 16910, 26910, 36910, 46910, 56910];
 /// RPC (pour une future passerelle d'échange) : uniquement en local.
 pub const RPC_ADDR: &str = "127.0.0.1:6911";
 

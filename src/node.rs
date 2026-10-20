@@ -409,7 +409,7 @@ impl Node {
                     }
                 }
                 for c in candidates {
-                    if connected.contains(&c) {
+                    if connected.contains(&c) || connected.iter().any(|l| l.starts_with(&format!("{c}:"))) {
                         continue;
                     }
                     {
@@ -429,6 +429,25 @@ impl Node {
     }
 
     pub fn connect_to(self: Arc<Self>, target: String) {
+        // Nœud d'amorçage écrit sans port (ex. « numfranc.duckdns.org ») : on essaie les ports habituels.
+        if !target.contains(':') {
+            let Some(ip) = (target.as_str(), 0).to_socket_addrs().ok().and_then(|mut a| a.next()).map(|a| a.ip()) else { return };
+            // C'est notre propre adresse publique (on est chez le nœud d'amorçage) : inutile de se joindre soi-même.
+            if self.is_reachable() && *self.public_ip.lock().unwrap() == Some(ip) {
+                return;
+            }
+            for port in SEED_PORTS {
+                let addr = SocketAddr::new(ip, port);
+                if self.is_banned(&ip) {
+                    return;
+                }
+                if let Ok(stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
+                    self.handle(stream, format!("{target}:{port}"), true);
+                    return;
+                }
+            }
+            return;
+        }
         let Some(addr) = target.to_socket_addrs().ok().and_then(|mut a| a.next()) else { return };
         if self.is_banned(&addr.ip()) {
             return;
@@ -535,7 +554,12 @@ impl Node {
                 {
                     let mut peers = self.peers.lock().unwrap();
                     let ip = peers.get(&id).map(|p| p.addr.ip());
-                    if peers.iter().any(|(pid, p)| *pid != id && p.remote_nonce == nonce && Some(p.addr.ip()) == ip) {
+                    // Exception : si les deux adresses sont « chez nous » (réseau local, ou notre propre adresse
+                    // publique vue à travers la box), un pirate d'Internet ne peut pas les imiter : on fusionne.
+                    let chez_nous = |a: &IpAddr| self.chez_nous(a);
+                    if peers.iter().any(|(pid, p)| {
+                        *pid != id && p.remote_nonce == nonce && (Some(p.addr.ip()) == ip || (chez_nous(&p.addr.ip()) && ip.as_ref().is_some_and(chez_nous)))
+                    }) {
                         if let Some(p) = peers.remove(&id) {
                             let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
                         }
@@ -555,7 +579,7 @@ impl Node {
                     } else if listen_port != 0 {
                         // Un vrai nœud NumFranc, venu d'une adresse publique, a réussi à nous joindre :
                         // preuve que notre port est ouvert.
-                        if !crate::addrman::is_local_ip(&p.addr.ip()) && !self.inbound_public.swap(true, Ordering::SeqCst) {
+                        if !self.chez_nous(&p.addr.ip()) && !self.inbound_public.swap(true, Ordering::SeqCst) {
                             log(&crate::tf!(
                                 "[ ] Un autre nœud s'est connecté à toi depuis Internet : ton port est bien ouvert.",
                                 "[ ] Another node connected to you from the Internet: your port is open."
@@ -1075,6 +1099,12 @@ impl Node {
             let pause = if nouvel_etat.niveau() == 1 { RENOUVELLEMENT_S } else { REESSAI_S };
             std::thread::sleep(Duration::from_secs(pause));
         }
+    }
+
+    /// Adresse « chez nous » : réseau local, ou notre propre adresse publique (connexion qui a fait
+    /// le tour par la box). Une telle connexion ne prouve pas que le port est ouvert vers Internet.
+    fn chez_nous(&self, ip: &IpAddr) -> bool {
+        is_local_ip(ip) || *self.public_ip.lock().unwrap() == Some(*ip)
     }
 
     /// Peut-on être joint depuis Internet ? (box qui a ouvert le port, port ouvert à la main, ou preuve par connexion entrante.)

@@ -94,7 +94,13 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. NOUVEAUTÉS DE LA v1.2.0 (contient aussi tout ce qui suit : v1.1.2 et v1.1.1)
+6. NOUVEAUTÉS DE LA v1.2.1
+   - Premier nœud d'amorçage : numfranc.duckdns.org. Un nouvel ordinateur s'y connecte en quelques secondes,
+     puis trouve les autres tout seul (annuaire mondial, échanges d'adresses).
+   - Un même ordinateur de votre maison n'apparaît plus plusieurs fois dans les pairs connectés.
+   - Le voyant vert « un autre nœud s'est connecté à toi depuis Internet » ne compte plus vos propres ordinateurs.
+
+   NOUVEAUTÉS DE LA v1.2.0 (contient aussi tout ce qui suit : v1.1.2 et v1.1.1)
    - « Toujours allumé » (Mac, Windows, Linux) : au premier lancement, NumFranc demande « Garder NumFranc
      allumé en permanence ? (recommandé) ». Si oui :
        • il démarre avec l'ordinateur et se relance tout seul s'il s'arrête, plante ou se fige ;
