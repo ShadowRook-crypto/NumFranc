@@ -1,39 +1,62 @@
-NumFranc — installer un NŒUD PERMANENT (serveur)
-================================================
+NumFranc — installer un NŒUD PERMANENT (serveur toujours allumé)
+================================================================
 
 À quoi ça sert ?
-   Un nœud permanent reste allumé jour et nuit. Les nouveaux utilisateurs le trouvent
-   toujours, même quand ton Mac est éteint. Il relaie les blocs et les paiements.
-   Il n'a PAS de portefeuille et ne mine pas : même piraté, il n'y a rien à voler.
+   Un nœud permanent reste allumé jour et nuit. Les nouveaux utilisateurs le trouvent toujours,
+   même quand tes autres ordinateurs sont éteints. Il relaie les blocs et les paiements, et il peut
+   miner pour toi. Il ne garde AUCUNE clé secrète : les récompenses partent vers l'adresse de ton
+   portefeuille (sur ton Mac par exemple). Même volé ou piraté, il n'y a rien à prendre dessus.
 
-Deux solutions gratuites
-   A. Un vieux PC (ou un Raspberry Pi 4/5) chez toi, branché sur la box, avec Ubuntu.
-      Gratuit si tu as déjà la machine. Dépend de ta box et du courant.
-   B. Oracle Cloud « Always Free » (serveur gratuit à vie, très fiable et rapide).
-      Il faut un compte avec carte bancaire et avoir 18 ans : à faire avec tes parents.
-      Choisir Ubuntu, et ouvrir le port TCP 6910 dans la « Security List ».
+Il se relance tout seul
+   - au démarrage de l'ordinateur (pas besoin d'ouvrir de session) ;
+   - 10 secondes après un arrêt ou un plantage, sans limite ;
+   - s'il se fige : il prévient le système toutes les 30 s ; sans nouvelles pendant 3 minutes,
+     il est relancé ;
+   - la mise en veille est désactivée (y compris quand on ferme l'écran d'un portable) ;
+   - après une coupure de courant : voir l'étape 4 (réglage du BIOS, une seule fois).
 
-Installation (Ubuntu, une seule fois)
-   1. Copier le dossier NumFranc sur la machine, par exemple dans /home/UTILISATEUR/NumFranc
-   2. Compiler :
-        sudo apt update && sudo apt install -y build-essential curl
-        cd ~/NumFranc && bash lancer-numfranc.sh --aide
-   3. Installer le service (redémarre tout seul après une panne ou un redémarrage) :
-        mkdir -p ~/.numfranc
-        sudo cp numfranc-serveur.service /etc/systemd/system/
-        sudo sed -i "s/UTILISATEUR/$USER/g" /etc/systemd/system/numfranc-serveur.service
-        sudo systemctl daemon-reload
-        sudo systemctl enable --now numfranc-serveur
-   4. Vérifier :
-        systemctl status numfranc-serveur
-        journalctl -u numfranc-serveur -f        (Ctrl+C pour quitter)
+Ce qu'il faut : un ordinateur sous Ubuntu (ou Debian), branché sur la box de la MAISON,
+   jamais sur un réseau professionnel. Un vieux PC suffit.
 
-Ensuite
-   Donne l'adresse publique du serveur (ex. 141.145.12.34:6910) : elle sera inscrite dans
-   le programme (liste DEFAULT_SEEDS) à la prochaine version. Tous les nouveaux PC
-   s'y connecteront automatiquement au démarrage.
+1. Installer NumFranc (si ce n'est pas déjà fait)
+   Télécharge NumFranc-linux-amd64.deb sur la page des versions, puis double-clic > Installer.
+   (Ou dans un terminal :  sudo apt install ./NumFranc-linux-amd64.deb )
+
+2. Copier l'adresse qui recevra les récompenses
+   Sur ton ordinateur principal : NumFranc > Recevoir > « Copier l'adresse » (NFR1-…).
+   Envoie-la-toi (note, mail à toi-même) pour la coller sur le serveur. Une adresse n'est pas
+   un secret : on peut la montrer sans risque.
+
+3. Une seule commande sur le serveur (dans un terminal)
+   Ferme d'abord la fenêtre NumFranc sur cet ordinateur, et décoche « Démarrer NumFranc à
+   l'ouverture de session » s'il était coché : le serveur prend sa place.
+        sudo numfranc --installer-serveur NFR1-…-TON-ADRESSE
+   Option : le nombre de cœurs pour miner à la fin (par défaut : tous sauf un), par exemple :
+        sudo numfranc --installer-serveur NFR1-…-TON-ADRESSE 2
+   Sans adresse, le serveur relaie seulement, sans miner :
+        sudo numfranc --installer-serveur
+
+4. Rallumage après une coupure de courant (BIOS, une seule fois)
+   Redémarre l'ordinateur et appuie plusieurs fois sur la touche du BIOS dès l'allumage
+   (HP : F10 ; Dell : F2 ; Lenovo : F1 ou F2 ; autres : Suppr ou F2). Cherche un réglage nommé
+   « After Power Loss », « AC Power Recovery » ou « Restore on AC Power Loss » (souvent dans
+   Advanced > Power-On Options, ou Power Management) et mets-le sur « On » / « Power On ».
+   Enregistre et quitte (souvent F10). Les ordinateurs portables n'ont en général pas ce
+   réglage : leur batterie les garde allumés pendant les petites coupures.
+
+5. Vérifier
+        systemctl status numfranc-serveur          (doit dire « active (running) »)
+        journalctl -u numfranc-serveur -f          (le journal en direct ; Ctrl+C pour quitter)
+   Le serveur garde sa propre chaîne dans /var/lib/numfranc.
+
+Changer l'adresse ou les cœurs : relance simplement la commande de l'étape 3.
+Retirer le serveur :  sudo numfranc --desinstaller-serveur   (la veille redevient possible)
+
+Ensuite (nœud d'amorçage)
+   Quand le serveur tourne, on lui donnera un nom fixe gratuit (DuckDNS) et ce nom sera inscrit
+   dans le programme (DEFAULT_SEEDS) : tous les nouveaux ordinateurs s'y connecteront d'abord.
 
 Sécurité du serveur
-   - Ne lance jamais NumFranc en administrateur (root) : le service utilise ton compte.
-   - Mets Ubuntu à jour régulièrement : sudo apt update && sudo apt upgrade
-   - N'ouvre que le port 6910 (et SSH si besoin, protégé par une clé).
+   - Le service tourne sous un compte système jetable, sans droit sur le reste du disque.
+   - Ubuntu installe tout seul ses mises à jour de sécurité (laisse-les activées).
+   - N'ouvre que le port 6910 (NumFranc l'ouvre tout seul sur la box quand c'est possible).

@@ -40,7 +40,12 @@ Options de lancement :
   --sans-minage       ne pas miner
   --dossier CHEMIN    dossier des données
   --console           mode texte (sans fenêtre)
-  --serveur           nœud permanent : sans portefeuille, sans fenêtre, sans minage
+  --serveur           nœud permanent : sans portefeuille, sans fenêtre (mine seulement avec --adresse-minage)
+  --adresse-minage A  (avec --serveur) miner et envoyer les récompenses à l'adresse NFR1-… A
+  --installer-serveur [NFR1-… [CŒURS]]
+                      (Linux, avec sudo) faire de cet ordinateur un nœud permanent : démarre avec
+                      l'ordinateur, se relance tout seul, mine vers l'adresse donnée
+  --desinstaller-serveur   (Linux, avec sudo) retirer le nœud permanent
   --reduit            démarrer la fenêtre réduite (utilisé par le démarrage automatique)
   --menu              ajouter NumFranc au menu des applications, puis quitter";
 
@@ -75,6 +80,7 @@ fn parse_args() -> Result<Options, String> {
         peers: Vec::new(),
         threads: (cores / 2).max(1),
         mine: true,
+        reward_to: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -85,6 +91,12 @@ fn parse_args() -> Result<Options, String> {
             "--coeurs" | "--threads" => o.threads = val()?.parse().map_err(|_| "nombre de cœurs invalide")?,
             "--sans-minage" | "--no-mine" => o.mine = false,
             "--dossier" | "--datadir" => o.data_dir = PathBuf::from(val()?),
+            "--adresse-minage" | "--mining-address" => o.reward_to = Some(numfranc::wallet::parse_address(&val()?)?),
+            // Installation du nœud permanent : leurs valeurs sont lues plus loin.
+            "--installer-serveur" | "--install-server" => {
+                let _: Vec<String> = args.by_ref().collect();
+            }
+            "--desinstaller-serveur" | "--uninstall-server" | "--gardien" | "--fond" => {}
             "--console" | "--serveur" | "--server" | "--menu" | "--reduit" => {}
             // Ancien macOS : numéro de processus ajouté par le Finder au lancement d'une app.
             l if l.starts_with("-psn_") => {}
@@ -534,10 +546,44 @@ fn main() {
     let settings = numfranc::settings::Settings::load(&opts.data_dir);
     numfranc::i18n::set_lang(settings.lang);
 
+    // « Toujours allumé » : le gardien (lancé par le système) et le nœud d'arrière-plan (lancé par le gardien).
+    if has("--gardien") {
+        cacher_console();
+        numfranc::permanent::gardien(&opts.data_dir);
+        return;
+    }
+    if has("--fond") {
+        cacher_console();
+        run_background(opts, settings);
+        return;
+    }
     if has("--menu") {
         match numfranc::install::add_to_menu(&opts.data_dir) {
             Ok(m) => println!("{m}"),
             Err(e) => eprintln!("Erreur : {e}"),
+        }
+        return;
+    }
+    if let Some(i) = std::env::args().position(|a| a == "--installer-serveur" || a == "--install-server") {
+        let rest: Vec<String> = std::env::args().skip(i + 1).collect();
+        let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
+        let coeurs = rest.get(1).and_then(|c| c.parse().ok()).unwrap_or(cores.saturating_sub(1).max(1));
+        match numfranc::serveur::installer(rest.first().map(|s| s.as_str()), coeurs) {
+            Ok(m) => println!("{m}"),
+            Err(e) => {
+                eprintln!("Erreur : {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    if has("--desinstaller-serveur") || has("--uninstall-server") {
+        match numfranc::serveur::desinstaller() {
+            Ok(m) => println!("{m}"),
+            Err(e) => {
+                eprintln!("Erreur : {e}");
+                std::process::exit(1);
+            }
         }
         return;
     }
@@ -593,11 +639,69 @@ fn main() {
     console(node);
 }
 
+/// Windows : pas de fenêtre noire pour les rôles sans fenêtre.
+fn cacher_console() {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn FreeConsole() -> i32;
+        }
+        unsafe { FreeConsole() };
+    }
+}
+
+/// Nœud d'arrière-plan (« Toujours allumé », fenêtre fermée) : garde le réseau et mine vers l'adresse
+/// de réception enregistrée dans les réglages. Aucune clé secrète : le portefeuille reste fermé.
+/// Toutes les 30 s : il signale au gardien qu'il va bien et relit les réglages (minage, cœurs).
+fn run_background(mut opts: Options, settings: numfranc::settings::Settings) {
+    opts.reward_to = numfranc::wallet::parse_address(&settings.reward_address).ok();
+    let coeurs = numfranc::permanent::coeurs_voulus(&settings);
+    opts.mine = settings.mine && opts.reward_to.is_some() && coeurs > 0;
+    opts.threads = coeurs.max(1);
+    println!("Arrière-plan : nœud sans fenêtre{}.", if opts.mine { ", minage vers l'adresse de réception" } else { "" });
+    let seed = match numfranc::vault::random::<32>() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Erreur : {e}");
+            std::process::exit(1);
+        }
+    };
+    let dir = opts.data_dir.clone();
+    let node = match Node::start(opts, Wallet::from_seed(seed)) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("Erreur au démarrage : {e}");
+            std::process::exit(1);
+        }
+    };
+    loop {
+        // Les verrous principaux répondent : le nœud n'est pas figé.
+        let _ = node.chain.lock().unwrap().height();
+        let _ = node.peer_list();
+        numfranc::permanent::fond_battement(&dir);
+        let s = numfranc::settings::Settings::load(&dir);
+        if !s.permanent || numfranc::permanent::fenetre_active(&dir) {
+            std::process::exit(0);
+        }
+        let coeurs = numfranc::permanent::coeurs_voulus(&s);
+        let mine = s.mine && node.opts.reward_to.is_some() && coeurs > 0;
+        node.mining.store(mine, Ordering::SeqCst);
+        if coeurs > 0 {
+            node.threads.store(coeurs, Ordering::SeqCst);
+        }
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
+}
+
 /// Nœud permanent (serveur) : relaie les blocs et transactions, aide les nouveaux à trouver
-/// le réseau. Aucun portefeuille enregistré, aucune fenêtre, aucun minage.
+/// le réseau. Aucun portefeuille enregistré, aucune fenêtre. Avec --adresse-minage, il mine et
+/// envoie les récompenses à cette adresse (aucune clé secrète sur le serveur : rien à voler).
 fn run_server(mut opts: Options) {
-    opts.mine = false;
-    println!("Mode serveur : nœud permanent sans portefeuille ni minage.");
+    opts.mine = opts.reward_to.is_some();
+    match &opts.reward_to {
+        Some(a) => println!("Mode serveur : nœud permanent, minage vers {} ({} cœur(s)).", address_to_string(a), opts.threads),
+        None => println!("Mode serveur : nœud permanent sans portefeuille ni minage."),
+    }
     // Portefeuille jetable en mémoire (jamais écrit sur le disque, jamais utilisé).
     let seed = match numfranc::vault::random::<32>() {
         Ok(s) => s,
@@ -614,6 +718,18 @@ fn run_server(mut opts: Options) {
         }
     };
     println!("Réseau : port {}. Le nœud tourne ; Ctrl+C pour l'arrêter.", node.opts.port);
+    // Prévient systemd que le nœud est prêt, puis toutes les 30 s qu'il va bien. Le test prend les
+    // verrous principaux : si le nœud est figé, le message ne part plus et systemd le relance.
+    numfranc::serveur::notifier("READY=1");
+    {
+        let node = node.clone();
+        std::thread::spawn(move || loop {
+            let h = node.chain.lock().unwrap().height();
+            let n = node.peer_list().len();
+            numfranc::serveur::notifier(&format!("WATCHDOG=1\nSTATUS=bloc #{h}, {n} pair(s)"));
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        });
+    }
     loop {
         std::thread::sleep(std::time::Duration::from_secs(600));
         let (h, n) = (node.chain.lock().unwrap().height(), node.peer_list().len());

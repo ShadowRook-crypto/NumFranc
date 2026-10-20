@@ -21,6 +21,14 @@ pub struct Settings {
     pub expert: bool,
     /// L'utilisateur dit avoir ouvert le port lui-même sur sa box.
     pub manual_port: bool,
+    /// NumFranc reste allumé en permanence (nœud d'arrière-plan quand la fenêtre est fermée).
+    pub permanent: bool,
+    /// La question « Garder NumFranc allumé en permanence ? » a-t-elle déjà été posée ?
+    pub permanent_asked: bool,
+    /// Case « Miner avec cet ordinateur » (retenue d'un lancement à l'autre, suivie en arrière-plan).
+    pub mine: bool,
+    /// Adresse de réception (publique) où le nœud d'arrière-plan envoie ses récompenses.
+    pub reward_address: String,
 }
 
 /// Couleurs principales proposées : (nom FR, nom EN, couleur claire, couleur sombre).
@@ -47,6 +55,10 @@ impl Default for Settings {
             cores_day: 1,
             expert: false,
             manual_port: false,
+            permanent: false,
+            permanent_asked: false,
+            mine: true,
+            reward_address: String::new(),
         }
     }
 }
@@ -73,6 +85,10 @@ impl Settings {
                 "coeurs_jour" => s.cores_day = v.parse().unwrap_or(s.cores_day),
                 "expert" => s.expert = v == "oui",
                 "port_manuel" => s.manual_port = v == "oui",
+                "permanent" => s.permanent = v == "oui",
+                "permanent_demande" => s.permanent_asked = v == "oui",
+                "minage" => s.mine = v != "non",
+                "adresse_minage" => s.reward_address = v.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect(),
                 _ => {}
             }
         }
@@ -81,7 +97,7 @@ impl Settings {
 
     pub fn save(&self, dir: &Path) {
         let text = format!(
-            "# Réglages NumFranc\ntheme={}\ncouleur={}\nlangue={}\nhoraire={}\nnuit_debut={}\nnuit_fin={}\ncoeurs_nuit={}\ncoeurs_jour={}\nexpert={}\nport_manuel={}\n",
+            "# Réglages NumFranc\ntheme={}\ncouleur={}\nlangue={}\nhoraire={}\nnuit_debut={}\nnuit_fin={}\ncoeurs_nuit={}\ncoeurs_jour={}\nexpert={}\nport_manuel={}\npermanent={}\npermanent_demande={}\nminage={}\nadresse_minage={}\n",
             if self.dark { "sombre" } else { "clair" },
             self.accent,
             self.lang.code(),
@@ -91,7 +107,11 @@ impl Settings {
             self.cores_night,
             self.cores_day,
             if self.expert { "oui" } else { "non" },
-            if self.manual_port { "oui" } else { "non" }
+            if self.manual_port { "oui" } else { "non" },
+            if self.permanent { "oui" } else { "non" },
+            if self.permanent_asked { "oui" } else { "non" },
+            if self.mine { "oui" } else { "non" },
+            self.reward_address
         );
         let _ = std::fs::create_dir_all(dir);
         let _ = std::fs::write(file(dir), text);
@@ -135,7 +155,7 @@ mod tests {
     #[test]
     fn sauvegarde_et_relecture() {
         let dir = std::env::temp_dir().join(format!("nfr-reglages-{}", std::process::id()));
-        let s = Settings { dark: true, accent: 3, lang: Lang::De, schedule: true, night_start: 21, night_end: 6, cores_night: 3, cores_day: 1, expert: true, manual_port: true };
+        let s = Settings { dark: true, accent: 3, lang: Lang::De, schedule: true, night_start: 21, night_end: 6, cores_night: 3, cores_day: 1, expert: true, manual_port: true, permanent: true, permanent_asked: true, mine: false, reward_address: "NFR1-ABCD".into() };
         s.save(&dir);
         assert_eq!(Settings::load(&dir), s);
         std::fs::remove_dir_all(&dir).unwrap();

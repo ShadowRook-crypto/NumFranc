@@ -142,6 +142,8 @@ et Windows, puis publie `NumFranc.zip`.
 - [x] Signature des versions (SLH-DSA), vérification des mises à jour, compilations reproductibles
 - [x] Audit de sécurité et corrections « comme Bitcoin » (v1.0)
 - [x] Ouverture automatique du port (UPnP, NAT-PMP, PCP) avec message d'état et guide de réglage universel, 6 langues, installeurs Mac / Windows / Linux (v1.1)
+- [x] Nœud permanent Linux en une commande, qui se relance tout seul (v1.1.2)
+- [x] « Toujours allumé » sur Mac, Windows et Linux : démarrage avec l'ordinateur, arrière-plan, relance automatique (v1.2.0)
 - [ ] Nœuds d'amorçage publics permanents (`DEFAULT_SEEDS`, en plus de l'annuaire mondial)
 - [ ] Synchronisation « headers-first »
 - [ ] Interface RPC locale (port 6911) pour une future passerelle d'échange

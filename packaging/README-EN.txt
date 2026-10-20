@@ -45,6 +45,13 @@ NumFranc (NFR) — user guide (English)
    Languages (v1.1.1): French, English, Spanish, German, Italian, Portuguese - Settings > Language. The system language is
    used on first launch when supported. Translations are machine-made: corrections are welcome.
    If your router cannot open the port by itself, Settings > Connection shows a step-by-step guide (works with any router).
+   Always on (v1.2.0, Mac/Windows/Linux): on first launch NumFranc asks "Keep NumFranc on all the time?
+   (recommended)". If yes, it starts with the computer, restarts by itself, keeps running in the background when
+   the window is closed and mines to your receiving address (wallet stays closed and encrypted).
+   Change it any time: Settings > Always on.
+   Headless server (Linux, v1.1.2): sudo numfranc --installer-serveur NFR1-YOUR-ADDRESS  - starts with the computer,
+   restarts by itself after a stop, crash or freeze (watchdog), prevents sleep, mines to your address without
+   holding any secret key. Remove it with: sudo numfranc --desinstaller-serveur. Details (French): SERVEUR.txt.
 
 5. GOOD TO KNOW
    - A mining reward becomes spendable after 100 blocks; a payment is safe after 6 blocks.

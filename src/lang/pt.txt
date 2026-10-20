@@ -506,3 +506,17 @@ Mining is off. To earn NFR, tick « Mine with this computer » on the Home scree
 NumFranc opens the port on your router by itself and looks for other nodes. Status: Settings > Connection.	O NumFranc abre sozinho a porta do seu router e procura outros nós. Estado: Definições > Ligação.
 nfr:… payment links open in NumFranc, already filled in. Nothing is sent without your spending code.	As ligações de pagamento nfr:… abrem no NumFranc, já preenchidas. Nada é enviado sem o seu código de gasto.
 Keep your 3 recovery pieces on 3 separate papers: any 2 of 3 recover everything.	Guarde as suas 3 partes de recuperação em 3 papéis separados: 2 de 3 bastam para recuperar tudo.
+« Always on » could not be installed: {e}	Não foi possível instalar «Sempre ligado»: {e}
+Keep NumFranc on all the time?	Manter o NumFranc sempre ligado?
+Yes (recommended)	Sim (recomendado)
+No	Não
+Always on	Sempre ligado
+Keep NumFranc on all the time (recommended)	Manter o NumFranc sempre ligado (recomendado)
+NumFranc starts with the computer and restarts by itself. When you close the window it keeps running in the background: it keeps the network going and mines to your receiving address, with the cores set above. Your wallet stays closed and encrypted.	O NumFranc arranca com o computador e reinicia-se sozinho. Quando fecha a janela, continua em segundo plano: mantém a rede ativa e minera para o seu endereço de receção, com os núcleos definidos acima. A sua carteira continua fechada e cifrada.
+Closing the window stops NumFranc.	Fechar a janela pára o NumFranc.
+Replaced by « Always on » (Settings): NumFranc already starts with the computer and keeps running without the window.	Substituído por «Sempre ligado» (Definições): o NumFranc já arranca com o computador e continua sem a janela.
+NumFranc stays on all the time: it starts with the computer, keeps running when the window is closed and restarts by itself.	O NumFranc fica sempre ligado: arranca com o computador, continua com a janela fechada e reinicia-se sozinho.
+NumFranc will stop when you close the window.	O NumFranc vai parar quando fechar a janela.
+Recommended: NumFranc starts with the computer, keeps running when you close the window and restarts by itself if it stops. The network stays strong and you keep mining.	Recomendado: o NumFranc arranca com o computador, continua quando fecha a janela e reinicia-se sozinho se parar. A rede mantém-se forte e você continua a minerar.
+With the window closed, it mines to your receiving address: your wallet stays closed and encrypted, no password is kept.	Com a janela fechada, minera para o seu endereço de receção: a sua carteira continua fechada e cifrada, nenhuma palavra-passe é guardada.
+You can change your mind at any time: Settings > Always on. The number of cores (day and night) is set in the same place.	Pode mudar de ideias a qualquer momento: Definições > Sempre ligado. O número de núcleos (dia e noite) define-se no mesmo sítio.

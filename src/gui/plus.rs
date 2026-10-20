@@ -949,6 +949,14 @@ impl App {
                 "NumFranc peut s'ouvrir tout seul quand tu ouvres ta session, fenêtre réduite : le nœud reste allumé et aide le réseau, le minage continue. Il faut quand même taper ton mot de passe d'ouverture (pour que ton portefeuille reste protégé). Fermer la fenêtre arrête NumFranc ; réduis-la plutôt.",
                 "NumFranc can open by itself when you log in, window minimized: the node stays on and helps the network, mining continues. Your opening password is still required (to keep your wallet protected). Closing the window stops NumFranc; minimize it instead.",
             ));
+            if self.settings.permanent {
+                ui.label(RichText::new(t(
+                    "Remplacé par « Toujours allumé » (Réglages) : NumFranc démarre déjà avec l'ordinateur et continue sans la fenêtre.",
+                    "Replaced by « Always on » (Settings): NumFranc already starts with the computer and keeps running without the window.",
+                ))
+                .color(p.green));
+                return;
+            }
             let on = *self.plus.autostart.get_or_insert_with(crate::install::autostart_enabled);
             let mut v = on;
             if ui.checkbox(&mut v, t("Démarrer NumFranc à l'ouverture de la session", "Start NumFranc at login")).changed() {

@@ -29,6 +29,8 @@ pub struct Options {
     pub peers: Vec<String>,
     pub threads: usize,
     pub mine: bool,
+    /// Adresse fixe qui reçoit les récompenses (nœud permanent) ; None = le portefeuille.
+    pub reward_to: Option<crate::tx::Address>,
 }
 
 struct Peer {
@@ -875,7 +877,10 @@ impl Node {
     // ---------- Minage ----------
 
     fn build_template(&self) -> Block {
-        let to = self.wallet.lock().unwrap().mining_address();
+        let to = match self.opts.reward_to {
+            Some(a) => a,
+            None => self.wallet.lock().unwrap().mining_address(),
+        };
         let c = self.chain.lock().unwrap();
         let tip = c.tip();
         let height = c.height() + 1;

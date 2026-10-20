@@ -8,7 +8,7 @@ pub const LOGO_PNG_512: &[u8] = include_bytes!("../assets/logo-512.png");
 /// Icône de la fenêtre : 64 x 64 pixels RGBA.
 pub const ICON_RGBA_64: &[u8] = include_bytes!("../assets/icon-64.rgba");
 
-fn home() -> Result<PathBuf, String> {
+pub(crate) fn home() -> Result<PathBuf, String> {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
@@ -54,7 +54,7 @@ fn launcher_dir(exe: &Path) -> PathBuf {
 // de configuration. Il ne doit jamais pouvoir y ajouter une commande ou une option.
 
 /// Refuse les chemins contenant des caractères de contrôle (retour à la ligne, etc.).
-fn check_path(s: &str) -> Result<(), String> {
+pub(crate) fn check_path(s: &str) -> Result<(), String> {
     if s.chars().any(char::is_control) {
         return Err("chemin contenant des caractères invisibles : déplace NumFranc dans un dossier au nom simple".into());
     }
@@ -63,7 +63,7 @@ fn check_path(s: &str) -> Result<(), String> {
 
 /// Linux : les fichiers .desktop ont leurs propres règles d'échappement ; on refuse simplement
 /// les caractères qui y ont un sens spécial.
-fn check_desktop_path(s: &str) -> Result<(), String> {
+pub(crate) fn check_desktop_path(s: &str) -> Result<(), String> {
     check_path(s)?;
     if s.chars().any(|c| matches!(c, '"' | '`' | '$' | '\\' | '%')) {
         return Err("chemin contenant \" ` $ \\ ou % : déplace NumFranc dans un dossier au nom simple".into());
@@ -83,7 +83,7 @@ fn ps_quote(s: &str) -> String {
 }
 
 /// XML (fichiers .plist de macOS).
-fn xml(s: &str) -> String {
+pub(crate) fn xml(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
@@ -308,9 +308,11 @@ pub fn hand_over_link(data_dir: &Path, link: &str) -> Result<bool, String> {
     let tmp = data_dir.join(format!("{LINK_FILE}.tmp"));
     std::fs::write(&tmp, link).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, data_dir.join(LINK_FILE)).map_err(|e| e.to_string())?;
-    // Un autre NumFranc tient-il déjà le verrou du dossier ? (on teste sans le garder)
+    // Une fenêtre NumFranc est-elle déjà ouverte sur ce dossier ? (le nœud d'arrière-plan, lui, ne prend
+    // pas les liens : dans ce cas, ce lancement ouvre la fenêtre, qui prendra la place du nœud d'arrière-plan.)
     let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(data_dir.join("numfranc.lock")).map_err(|e| e.to_string())?;
-    Ok(f.try_lock().is_err())
+    let tenu = f.try_lock().is_err();
+    Ok(tenu && crate::permanent::fenetre_active(data_dir))
 }
 
 /// Reprend le lien de paiement déposé par hand_over_link, s'il y en a un (et l'efface).
@@ -461,6 +463,161 @@ pub fn set_autostart(enable: bool, data_dir: &Path) -> Result<String, String> {
     Ok(on.into())
 }
 
+// ---------- « Toujours allumé » : le gardien démarre avec l'ordinateur ----------
+
+const GARDIEN_MAC: &str = "org.numfranc.gardien";
+const GARDIEN_WIN: &str = "NumFranc gardien";
+const GARDIEN_LINUX: &str = "numfranc-gardien.service";
+
+fn gardien_fichier() -> Result<PathBuf, String> {
+    let h = home()?;
+    if cfg!(target_os = "macos") {
+        Ok(h.join(format!("Library/LaunchAgents/{GARDIEN_MAC}.plist")))
+    } else if cfg!(target_os = "linux") {
+        Ok(h.join(".config/systemd/user").join(GARDIEN_LINUX))
+    } else {
+        Err("pas de fichier sous Windows".into())
+    }
+}
+
+/// Fichier .desktop de secours (Linux sans systemd utilisateur).
+fn gardien_desktop() -> Result<PathBuf, String> {
+    Ok(home()?.join(".config/autostart/numfranc-gardien.desktop"))
+}
+
+/// Texte du LaunchAgent macOS : lancé à l'ouverture de session et relancé s'il s'arrête (KeepAlive).
+pub fn gardien_plist(exe: &str, data: &str) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>{GARDIEN_MAC}</string>\n<key>ProgramArguments</key><array><string>{}</string><string>--gardien</string><string>--dossier</string><string>{}</string></array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><true/>\n<key>ThrottleInterval</key><integer>10</integer>\n<key>ProcessType</key><string>Background</string>\n<key>Nice</key><integer>10</integer>\n</dict></plist>\n",
+        xml(exe),
+        xml(data)
+    )
+}
+
+/// Texte du service systemd de l'utilisateur (Linux) : relancé 10 s après tout arrêt.
+pub fn gardien_systemd(exe: &str, data: &str) -> String {
+    format!(
+        "[Unit]\nDescription=NumFranc - toujours allume (gardien)\nStartLimitIntervalSec=0\n\n[Service]\nExecStart=\"{exe}\" --gardien --dossier \"{data}\"\nRestart=always\nRestartSec=10\nNice=10\n\n[Install]\nWantedBy=default.target\n"
+    )
+}
+
+fn commande_ok(prog: PathBuf, args: &[&str]) -> bool {
+    std::process::Command::new(prog).args(args).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false)
+}
+
+/// Lance le gardien tout de suite, détaché (Windows, ou Linux sans systemd utilisateur).
+fn lancer_gardien(exe: &Path, data: &Path) {
+    let mut c = std::process::Command::new(exe);
+    c.arg("--gardien").arg("--dossier").arg(data);
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000 | 0x0000_0008); // sans fenêtre, détaché
+    }
+    let _ = c.spawn();
+}
+
+#[cfg(target_os = "macos")]
+fn uid() -> String {
+    std::process::Command::new("/usr/bin/id").arg("-u").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+}
+
+/// Le gardien « toujours allumé » est-il installé ?
+pub fn permanent_installe() -> bool {
+    if cfg!(target_os = "windows") {
+        std::process::Command::new(system_tool("reg"))
+            .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "/v", GARDIEN_WIN])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        gardien_fichier().map(|p| p.exists()).unwrap_or(false) || gardien_desktop().map(|p| p.exists()).unwrap_or(false)
+    }
+}
+
+/// Installe (ou retire) le gardien : NumFranc démarre avec l'ordinateur, continue quand la fenêtre est
+/// fermée et se relance tout seul. L'ancien démarrage « fenêtre réduite » est retiré : il ferait doublon.
+pub fn set_permanent(enable: bool, data_dir: &Path) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = exe.canonicalize().unwrap_or(exe);
+    let exe_s = exe.display().to_string();
+    let data = data_dir.display().to_string();
+    for p in [&exe_s, &data] {
+        if cfg!(target_os = "linux") { check_desktop_path(p) } else { check_path(p) }?;
+    }
+    let on = crate::i18n::t(
+        "NumFranc reste allumé en permanence : il démarre avec l'ordinateur, continue quand la fenêtre est fermée et se relance tout seul.",
+        "NumFranc stays on all the time: it starts with the computer, keeps running when the window is closed and restarts by itself.",
+    );
+    let off = crate::i18n::t("NumFranc s'arrêtera quand tu fermeras la fenêtre.", "NumFranc will stop when you close the window.");
+    if enable && autostart_enabled() {
+        let _ = set_autostart(false, data_dir);
+    }
+    if cfg!(target_os = "windows") {
+        let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        if enable {
+            let cmd = format!("\"{exe_s}\" --gardien --dossier \"{data}\"");
+            if !commande_ok(system_tool("reg"), &["add", key, "/v", GARDIEN_WIN, "/t", "REG_SZ", "/d", &cmd, "/f"]) {
+                return Err("écriture du registre impossible".into());
+            }
+            lancer_gardien(&exe, data_dir);
+            return Ok(on.into());
+        }
+        let _ = commande_ok(system_tool("reg"), &["delete", key, "/v", GARDIEN_WIN, "/f"]);
+        return Ok(off.into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let p = gardien_fichier()?;
+        let cible = format!("gui/{}/{GARDIEN_MAC}", uid());
+        let _ = commande_ok(PathBuf::from("/bin/launchctl"), &["bootout", &cible]);
+        if !enable {
+            let _ = std::fs::remove_file(&p);
+            return Ok(off.into());
+        }
+        std::fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::write(&p, gardien_plist(&exe_s, &data)).map_err(|e| e.to_string())?;
+        let domaine = format!("gui/{}", uid());
+        if !commande_ok(PathBuf::from("/bin/launchctl"), &["bootstrap", &domaine, &p.display().to_string()]) {
+            let _ = commande_ok(PathBuf::from("/bin/launchctl"), &["load", "-w", &p.display().to_string()]);
+        }
+        return Ok(on.into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let p = gardien_fichier()?;
+        let d = gardien_desktop()?;
+        let systemctl = PathBuf::from("systemctl");
+        if !enable {
+            let _ = commande_ok(systemctl.clone(), &["--user", "disable", "--now", GARDIEN_LINUX]);
+            let _ = std::fs::remove_file(&p);
+            let _ = std::fs::remove_file(&d);
+            let _ = commande_ok(systemctl, &["--user", "daemon-reload"]);
+            return Ok(off.into());
+        }
+        std::fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::write(&p, gardien_systemd(&exe_s, &data)).map_err(|e| e.to_string())?;
+        let ok = commande_ok(systemctl.clone(), &["--user", "daemon-reload"]) && commande_ok(systemctl, &["--user", "enable", "--now", GARDIEN_LINUX]);
+        if ok {
+            // Démarrer même sans ouvrir de session (autorisé pour son propre compte sur Ubuntu) ; sans effet sinon.
+            let _ = commande_ok(PathBuf::from("loginctl"), &["enable-linger"]);
+        } else {
+            // Pas de systemd utilisateur : démarrage à l'ouverture de session, et tout de suite.
+            let _ = std::fs::remove_file(&p);
+            std::fs::create_dir_all(d.parent().unwrap()).map_err(|e| e.to_string())?;
+            let texte = format!(
+                "[Desktop Entry]\nType=Application\nName=NumFranc (toujours allumé)\nExec=\"{exe_s}\" --gardien --dossier \"{data}\"\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n"
+            );
+            std::fs::write(&d, texte).map_err(|e| e.to_string())?;
+            lancer_gardien(&exe, data_dir);
+        }
+        return Ok(on.into());
+    }
+    #[allow(unreachable_code)]
+    Err("système non pris en charge".into())
+}
+
 #[cfg(unix)]
 fn set_executable(p: &Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -511,6 +668,16 @@ mod tests_lien {
     }
 
     #[test]
+    fn fichiers_du_gardien() {
+        let p = gardien_plist("/Applications/NumFranc.app/Contents/MacOS/NumFranc", "/Users/x/Library/Application Support/NumFranc");
+        assert!(p.contains("<key>KeepAlive</key><true/>"));
+        assert!(p.contains("<string>--gardien</string>"));
+        let u = gardien_systemd("/usr/bin/numfranc", "/home/x/.numfranc");
+        assert!(u.contains("ExecStart=\"/usr/bin/numfranc\" --gardien --dossier \"/home/x/.numfranc\""));
+        assert!(u.contains("Restart=always"));
+    }
+
+    #[test]
     fn chemins_pieges_neutralises() {
         // Bash : $(…), `…` et " restent du texte entre apostrophes.
         assert_eq!(sh_quote("/home/a b"), "'/home/a b'");
@@ -546,6 +713,11 @@ mod tests_lien {
         // NumFranc déjà ouvert (verrou tenu) : le second lancement doit s'arrêter et laisser le lien.
         let tenu = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("numfranc.lock")).unwrap();
         tenu.try_lock().unwrap();
+        // Verrou tenu par le nœud d'arrière-plan seulement (pas de fenêtre) : ce lancement ouvre la fenêtre.
+        assert_eq!(hand_over_link(&dir, lien), Ok(false));
+        assert_eq!(take_link(&dir).as_deref(), Some(lien));
+        // Une fenêtre est ouverte : c'est elle qui prendra le lien.
+        std::fs::write(dir.join("fenetre-active.txt"), "1").unwrap();
         assert_eq!(hand_over_link(&dir, lien), Ok(true));
         assert_eq!(take_link(&dir).as_deref(), Some(lien));
         drop(tenu);

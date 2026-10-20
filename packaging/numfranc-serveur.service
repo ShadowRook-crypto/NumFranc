@@ -1,19 +1,26 @@
+# Modèle de référence : la commande « sudo numfranc --installer-serveur » écrit ce fichier toute seule
+# dans /etc/systemd/system/ (voir SERVEUR.txt). Inutile de le copier à la main.
 [Unit]
-Description=Nœud permanent NumFranc (sans portefeuille, sans minage)
+Description=NumFranc - noeud permanent (se relance tout seul)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
-User=UTILISATEUR
-WorkingDirectory=/home/UTILISATEUR/NumFranc
-ExecStart=/home/UTILISATEUR/NumFranc/code/target/release/numfranc --serveur
+Type=notify
+NotifyAccess=main
+EnvironmentFile=-/etc/default/numfranc-serveur
+ExecStart=/usr/bin/numfranc --serveur --dossier /var/lib/numfranc $NUMFRANC_ARGS
 Restart=always
 RestartSec=10
-# Protections : le service ne peut rien modifier en dehors de ses données.
+WatchdogSec=180
+TimeoutStartSec=300
+Nice=10
+DynamicUser=yes
+StateDirectory=numfranc
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/UTILISATEUR/.numfranc
+ProtectHome=true
 PrivateTmp=true
 
 [Install]

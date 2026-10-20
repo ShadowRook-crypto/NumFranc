@@ -451,6 +451,20 @@ impl App {
         palette(&self.settings)
     }
 
+    /// Active ou coupe « Toujours allumé » : réglage enregistré, puis gardien installé ou retiré.
+    fn set_permanent(&mut self, on: bool, ctx: &egui::Context) {
+        self.settings.permanent = on;
+        self.save_settings(ctx);
+        match crate::install::set_permanent(on, &self.opts.data_dir) {
+            Ok(m) => self.info = Some(m),
+            Err(e) => {
+                self.error = Some(tf!("« Toujours allumé » impossible à installer : {e}", "« Always on » could not be installed: {e}"));
+                self.settings.permanent = false;
+                self.save_settings(ctx);
+            }
+        }
+    }
+
     fn save_settings(&mut self, ctx: &egui::Context) {
         self.settings.save(&self.opts.data_dir);
         crate::i18n::set_lang(self.settings.lang);
@@ -479,6 +493,13 @@ impl App {
         match r {
             JobResult::Started(node, shares) => {
                 node.set_manual_port(self.settings.manual_port);
+                node.mining.store(self.settings.mine && node.opts.mine, Ordering::SeqCst);
+                // Adresse de réception (publique) pour le nœud d'arrière-plan.
+                let adresse = node.wallet.lock().unwrap().main_address().map(|a| crate::wallet::address_to_string(&a)).unwrap_or_default();
+                if !adresse.is_empty() && self.settings.reward_address != adresse {
+                    self.settings.reward_address = adresse;
+                    self.settings.save(&self.opts.data_dir);
+                }
                 self.node = Some(node);
                 self.shares_to_show = shares;
                 self.shares_confirmed = false;
@@ -1041,6 +1062,10 @@ impl App {
 
 /// Démarre le nœud avec le portefeuille ouvert (dans le fil de l'opération).
 fn start_node(opts: Options, w: Wallet, shares: Option<[String; 3]>) -> JobResult {
+    // « Toujours allumé » : la fenêtre signale qu'elle est ouverte ; le nœud d'arrière-plan lui laisse
+    // alors la place (au plus 30 s d'attente), puis reprend quand la fenêtre se ferme.
+    crate::permanent::fenetre_battement(&opts.data_dir);
+    crate::permanent::attendre_place(&opts.data_dir, Duration::from_secs(30));
     match Node::start(opts, w) {
         Ok(n) => JobResult::Started(n, shares),
         Err(e) => JobResult::Err(tf!("démarrage du nœud impossible : {e}", "could not start the node: {e}")),
@@ -1175,6 +1200,39 @@ impl App {
                 crate::install::bienvenue_vue(&self.opts.data_dir);
             }
         }
+        if !self.bienvenue && !self.settings.permanent_asked && self.node.is_some() && self.shares_to_show.is_none() {
+            let mut choix = None;
+            egui::Window::new(t("Garder NumFranc allumé en permanence ?", "Keep NumFranc on all the time?"))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.set_max_width(480.0);
+                    for (fr, en) in [
+                        ("Recommandé : NumFranc démarre avec l'ordinateur, continue quand tu fermes la fenêtre et se relance tout seul s'il s'arrête. Le réseau reste solide et tu continues à miner.",
+                         "Recommended: NumFranc starts with the computer, keeps running when you close the window and restarts by itself if it stops. The network stays strong and you keep mining."),
+                        ("Fenêtre fermée, il mine vers ton adresse de réception : ton portefeuille reste fermé et chiffré, aucun mot de passe n'est gardé.",
+                         "With the window closed, it mines to your receiving address: your wallet stays closed and encrypted, no password is kept."),
+                        ("Tu peux changer d'avis à tout moment : Réglages > Toujours allumé. Le nombre de cœurs (jour et nuit) se règle au même endroit.",
+                         "You can change your mind at any time: Settings > Always on. The number of cores (day and night) is set in the same place."),
+                    ] {
+                        ui.label(t(fr, en));
+                        ui.add_space(6.0);
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::Button::new(RichText::new(t("Oui (recommandé)", "Yes (recommended)")).strong()).fill(p.accent.gamma_multiply(0.45))).clicked() {
+                            choix = Some(true);
+                        }
+                        if ui.button(t("Non", "No")).clicked() {
+                            choix = Some(false);
+                        }
+                    });
+                });
+            if let Some(on) = choix {
+                self.settings.permanent_asked = true;
+                self.set_permanent(on, ctx);
+            }
+        }
         if !self.toasts.is_empty() {
             egui::Area::new(egui::Id::unique("notifications")).anchor(egui::Align2::RIGHT_BOTTOM, [-14.0, -44.0]).show(ctx, |ui| {
                 for (_, msg) in &self.toasts {
@@ -1239,6 +1297,8 @@ impl App {
                 let mut on = s.mining;
                 if ui.checkbox(&mut on, t("Miner avec cet ordinateur", "Mine with this computer")).changed() {
                     node.mining.store(on, Ordering::SeqCst);
+                    self.settings.mine = on;
+                    self.settings.save(&self.opts.data_dir);
                     events::log(if on { t("Minage démarré.", "Mining started.") } else { t("Minage arrêté.", "Mining stopped.") });
                     self.snap_at = None;
                 }
@@ -1941,6 +2001,28 @@ impl App {
                 changed |= ui.add(egui::Slider::new(&mut self.settings.cores_day, 0..=cores).text(t("cœurs le jour (0 = arrêt)", "cores during the day (0 = off)"))).changed();
             });
         });
+        let mut permanent = self.settings.permanent;
+        let mut permanent_change = false;
+        card(ui, &p, |ui| {
+            ui.label(RichText::new(t("Toujours allumé", "Always on")).strong());
+            permanent_change = ui.checkbox(&mut permanent, t("Garder NumFranc allumé en permanence (recommandé)", "Keep NumFranc on all the time (recommended)")).changed();
+            ui.label(
+                RichText::new(if permanent {
+                    t(
+                        "NumFranc démarre avec l'ordinateur et se relance tout seul. Quand tu fermes la fenêtre, il continue en arrière-plan : il garde le réseau et mine vers ton adresse de réception, avec les cœurs réglés ci-dessus. Ton portefeuille reste fermé et chiffré.",
+                        "NumFranc starts with the computer and restarts by itself. When you close the window it keeps running in the background: it keeps the network going and mines to your receiving address, with the cores set above. Your wallet stays closed and encrypted.",
+                    )
+                } else {
+                    t("Fermer la fenêtre arrête NumFranc.", "Closing the window stops NumFranc.")
+                })
+                .small()
+                .color(p.grey),
+            );
+        });
+        if permanent_change {
+            self.settings.permanent_asked = true;
+            self.set_permanent(permanent, ctx);
+        }
         if let Some(etat) = port.clone() {
             let aide = self.node.as_ref().and_then(|n| n.aide_box());
             let mut manuel = self.settings.manual_port;

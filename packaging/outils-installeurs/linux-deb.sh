@@ -29,6 +29,7 @@ DESK
 chmod 644 "$P/usr/share/applications/numfranc.desktop"
 install -m 644 "$ICI/LICENSE" "$P/usr/share/doc/numfranc/copyright"
 install -m 644 "$ICI/packaging/LISEZMOI.txt" "$P/usr/share/doc/numfranc/LISEZMOI.txt"
+install -m 644 "$ICI/packaging/SERVEUR.txt" "$P/usr/share/doc/numfranc/SERVEUR.txt"
 SIZE="$(du -sk "$P/usr" | cut -f1)"
 cat > "$P/DEBIAN/control" <<CTL
 Package: numfranc

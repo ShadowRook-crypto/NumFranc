@@ -11,9 +11,11 @@ pub mod i18n;
 pub mod addrman;
 pub mod install;
 pub mod maj;
+pub mod permanent;
 pub mod portmap;
 #[cfg(target_os = "macos")]
 pub mod mac_liens;
+pub mod serveur;
 pub mod settings;
 pub mod hashing;
 pub mod mempool;

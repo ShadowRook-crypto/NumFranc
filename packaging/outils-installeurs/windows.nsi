@@ -30,6 +30,9 @@ VIAddVersionKey "LegalCopyright" "ShadowRook - licence MIT"
 
 Section "NumFranc"
   SetOutPath "$INSTDIR"
+  ; « Toujours allumé » : on arrête NumFranc (gardien et arrière-plan) pour pouvoir remplacer le programme.
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /F /IM NumFranc.exe'
+  Sleep 1500
   ; Si NumFranc est ouvert pendant une mise à jour, on laisse l'ancien fichier se remplacer au prochain redémarrage.
   SetOverwrite try
   File "/oname=NumFranc.exe" "${PROGRAMME}"
@@ -50,11 +53,18 @@ Section "NumFranc"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NumFranc" "UninstallString" '"$INSTDIR\Desinstaller.exe"'
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NumFranc" "NoModify" 1
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\NumFranc" "NoRepair" 1
+  ; Si « Toujours allumé » était activé, on relance tout de suite le gardien (nouvelle version).
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "NumFranc gardien"
+  StrCmp $0 "" +2
+  Exec '$0'
 SectionEnd
 
 ; La désinstallation retire le programme, le raccourci et le lien nfr: ;
 ; elle NE touche JAMAIS au portefeuille ni à la chaîne (dossier %APPDATA%\NumFranc).
 Section "Uninstall"
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /F /IM NumFranc.exe'
+  Sleep 1500
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "NumFranc gardien"
   Delete "$INSTDIR\NumFranc.exe"
   Delete "$INSTDIR\numfranc.ico"
   Delete "$INSTDIR\Desinstaller.exe"
