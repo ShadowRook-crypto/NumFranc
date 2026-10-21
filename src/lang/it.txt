@@ -530,3 +530,13 @@ NumFranc checks by itself at startup and then every 6 hours. A new version is of
 Last automatic update: {e}	Ultimo aggiornamento automatico: {e}
 It downloads and checks itself: the « Install and restart » button appears at the top of the window.	Si scarica e si verifica da sola: il pulsante «Installa e riavvia» appare in alto nella finestra.
 sending blocked: this version has a known security flaw. Install the update (Settings > Updates), then try again.	invio bloccato: questa versione ha una falla di sicurezza nota. Installa l'aggiornamento (Impostazioni > Aggiornamenti), poi riprova.
+[!] The background mining address was not yours: it has been reset. If you did not change it yourself, have this computer checked.	[!] L'indirizzo di mining in background non era tuo: è stato ripristinato. Se non l'hai cambiato tu, fai controllare questo computer.
+date;block;type;amount (NFR);message;locked until\n	data;blocco;tipo;importo (NFR);messaggio;bloccato fino al\n
+NumFranc is running from a temporary folder, a USB drive or Downloads: install it first with the official installer.	NumFranc è in esecuzione da una cartella temporanea, una chiavetta USB o Download: installalo prima con il programma di installazione ufficiale.
+the protection settings were changed without your spending code: check them and save them again (Advanced tab) before sending	le impostazioni di protezione sono state modificate senza il tuo codice di spesa: controllale e salvale di nuovo (scheda Avanzate) prima di inviare
+amount too small: at least 0.0001 NFR	importo troppo piccolo: almeno 0,0001 NFR
+this wallet's addresses do not match its seed (modified file?): restore it with your recovery pieces	gli indirizzi di questo portafoglio non corrispondono al suo seme (file modificato?): ripristinalo con i tuoi pezzi di recupero
+proposal refused: it contains a name operation	proposta rifiutata: contiene un'operazione di pseudonimo
+proposal refused: an output is locked or can be taken back by someone	proposta rifiutata: un'uscita è bloccata o qualcuno può riprenderla
+proposal refused: the inputs come from several groups	proposta rifiutata: gli ingressi provengono da più gruppi
+A payment cancelled by the guardian always comes back to you (network rule from 9 November 2026; before that date, the guardian can send it elsewhere). The spending code above is required to change these settings.	Un pagamento annullato dal guardiano torna sempre a te (regola della rete dal 9 novembre 2026; prima di questa data, il guardiano può inviarlo altrove). Per modificare queste impostazioni serve il codice di spesa qui sopra.

@@ -77,9 +77,50 @@ fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// PowerShell : entre apostrophes, une apostrophe s'écrit ''.
-fn ps_quote(s: &str) -> String {
-    s.replace('\'', "''")
+
+/// Windows : un argument entre guillemets selon les règles officielles (les \\ juste avant le guillemet
+/// final sont doublés, sinon « D:\\ » ferait sortir des guillemets). Les chemins Windows ne contiennent pas de ".
+pub(crate) fn win_arg(s: &str) -> String {
+    let fin = s.len() - s.trim_end_matches('\\').len();
+    format!("\"{}{}\"", s, "\\".repeat(fin))
+}
+
+/// Dossier « toujours allumé » refusé s'il est temporaire ou amovible : le système essaierait de le
+/// lancer pour toujours, et un autre fichier posé là plus tard serait lancé à sa place.
+fn chemin_durable(p: &str) -> Result<(), String> {
+    let bas = p.to_lowercase().replace('\\', "/");
+    // Où que ce soit dans le chemin :
+    let partout = ["/apptranslocation/", "/appdata/local/temp/", "/downloads/", "/téléchargements/"];
+    // Seulement au début du chemin (un dossier « ~/tmp/ » à soi reste accepté) :
+    let debut = ["/volumes/", "/tmp/", "/private/tmp/", "/var/tmp/", "/private/var/folders/", "/var/folders/", "/media/", "/run/media/", "/mnt/"];
+    if partout.iter().any(|m| bas.contains(m)) || debut.iter().any(|m| bas.starts_with(m)) {
+        return Err(crate::i18n::t(
+            "NumFranc est lancé depuis un dossier temporaire, une clé USB ou les Téléchargements : installe-le d'abord avec l'installeur officiel.",
+            "NumFranc is running from a temporary folder, a USB drive or Downloads: install it first with the official installer.",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Crée le dossier des données, lisible seulement par son propriétaire (Unix : droits 700).
+pub fn dossier_prive(dir: &Path) {
+    let _ = std::fs::create_dir_all(dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(m) = std::fs::metadata(dir) {
+            if m.permissions().mode() & 0o077 != 0 && std::fs::symlink_metadata(dir).is_ok_and(|m| !m.file_type().is_symlink()) {
+                let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+            }
+        }
+    }
+}
+
+/// Dossier de lancement (celui du programme, ou du lanceur NumFranc.zip qui contient noeuds.txt).
+pub fn dossier_lanceur() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    Some(launcher_dir(&exe.canonicalize().unwrap_or(exe)))
 }
 
 /// XML (fichiers .plist de macOS).
@@ -238,23 +279,23 @@ pub fn add_to_menu(data_dir: &Path) -> Result<String, String> {
         let ico_path = data_dir.join("numfranc.ico");
         std::fs::write(&ico_path, ico(LOGO_PNG_256)).map_err(|e| e.to_string())?;
         let lnk = PathBuf::from(appdata).join("Microsoft\\Windows\\Start Menu\\Programs\\NumFranc.lnk");
-        let ps = format!(
-            "$s=(New-Object -COM WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='--dossier \"{}\"';$s.WorkingDirectory='{}';$s.IconLocation='{}';$s.Save()",
-            ps_quote(&lnk.display().to_string()),
-            ps_quote(&exe.display().to_string()),
-            ps_quote(&data),
-            ps_quote(&workdir.display().to_string()),
-            ps_quote(&ico_path.display().to_string())
-        );
+        // Les chemins passent par des variables d'environnement, jamais dans le texte du script :
+        // aucune apostrophe (droite ou typographique) ne peut y glisser une commande.
+        let ps = "$s=(New-Object -COM WScript.Shell).CreateShortcut($env:NFR_LNK);$s.TargetPath=$env:NFR_EXE;$s.Arguments=$env:NFR_ARGS;$s.WorkingDirectory=$env:NFR_DIR;$s.IconLocation=$env:NFR_ICO;$s.Save()";
         let ok = std::process::Command::new(system_tool("powershell"))
-            .args(["-NoProfile", "-Command", &ps])
+            .args(["-NoProfile", "-Command", ps])
+            .env("NFR_LNK", &lnk)
+            .env("NFR_EXE", &exe)
+            .env("NFR_ARGS", format!("--dossier {}", win_arg(&data)))
+            .env("NFR_DIR", &workdir)
+            .env("NFR_ICO", &ico_path)
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
         if ok {
             // Les liens nfr:… s'ouvrent avec NumFranc (registre de l'utilisateur, sans droits administrateur).
             // reg.exe est appelé directement, sans passer par un interpréteur de commandes.
-            let cmd = format!("\"{}\" --dossier \"{}\" \"%1\"", exe.display(), data);
+            let cmd = format!("\"{}\" --dossier {} \"%1\"", exe.display(), win_arg(&data));
             let key = r"HKCU\Software\Classes\nfr";
             let reg = |args: &[&str]| std::process::Command::new(system_tool("reg")).args(args).status().map(|s| s.success()).unwrap_or(false);
             let _ = reg(&["add", key, "/ve", "/d", "URL:NumFranc", "/f"])
@@ -430,7 +471,7 @@ pub fn set_autostart(enable: bool, data_dir: &Path) -> Result<String, String> {
     if cfg!(target_os = "windows") {
         let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
         let ok = if enable {
-            let cmd = format!("\"{}\" --reduit --dossier \"{}\"", exe.display(), data);
+            let cmd = format!("\"{}\" --reduit --dossier {}", exe.display(), win_arg(&data));
             std::process::Command::new(system_tool("reg")).args(["add", key, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &cmd, "/f"]).status().map(|s| s.success()).unwrap_or(false)
         } else {
             let _ = std::process::Command::new(system_tool("reg")).args(["delete", key, "/v", AUTOSTART_NAME, "/f"]).status();
@@ -488,7 +529,7 @@ fn gardien_desktop() -> Result<PathBuf, String> {
 /// Texte du LaunchAgent macOS : lancé à l'ouverture de session et relancé s'il s'arrête (KeepAlive).
 pub fn gardien_plist(exe: &str, data: &str) -> String {
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>{GARDIEN_MAC}</string>\n<key>ProgramArguments</key><array><string>{}</string><string>--gardien</string><string>--dossier</string><string>{}</string></array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><true/>\n<key>ThrottleInterval</key><integer>10</integer>\n<key>ProcessType</key><string>Background</string>\n<key>Nice</key><integer>10</integer>\n</dict></plist>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>{GARDIEN_MAC}</string>\n<key>ProgramArguments</key><array><string>{}</string><string>--gardien</string><string>--dossier</string><string>{}</string></array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n<key>ThrottleInterval</key><integer>10</integer>\n<key>ProcessType</key><string>Background</string>\n<key>Nice</key><integer>10</integer>\n</dict></plist>\n",
         xml(exe),
         xml(data)
     )
@@ -497,7 +538,7 @@ pub fn gardien_plist(exe: &str, data: &str) -> String {
 /// Texte du service systemd de l'utilisateur (Linux) : relancé 10 s après tout arrêt.
 pub fn gardien_systemd(exe: &str, data: &str) -> String {
     format!(
-        "[Unit]\nDescription=NumFranc - toujours allume (gardien)\nStartLimitIntervalSec=0\n\n[Service]\nExecStart=\"{exe}\" --gardien --dossier \"{data}\"\nRestart=always\nRestartSec=10\nNice=10\n\n[Install]\nWantedBy=default.target\n"
+        "[Unit]\nDescription=NumFranc - toujours allume (gardien)\nStartLimitIntervalSec=0\n\n[Service]\nExecStart=\"{exe}\" --gardien --dossier \"{data}\"\nRestart=on-failure\nRestartSec=10\nNice=10\n\n[Install]\nWantedBy=default.target\n"
     )
 }
 
@@ -545,6 +586,12 @@ pub fn set_permanent(enable: bool, data_dir: &Path) -> Result<String, String> {
     let data = data_dir.display().to_string();
     for p in [&exe_s, &data] {
         if cfg!(target_os = "linux") { check_desktop_path(p) } else { check_path(p) }?;
+        if cfg!(windows) && p.contains('%') {
+            return Err("chemin contenant % : déplace NumFranc dans un dossier au nom simple".into());
+        }
+    }
+    if enable {
+        chemin_durable(&exe_s)?;
     }
     let on = crate::i18n::t(
         "NumFranc reste allumé en permanence : il démarre avec l'ordinateur, continue quand la fenêtre est fermée et se relance tout seul.",
@@ -557,7 +604,7 @@ pub fn set_permanent(enable: bool, data_dir: &Path) -> Result<String, String> {
     if cfg!(target_os = "windows") {
         let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
         if enable {
-            let cmd = format!("\"{exe_s}\" --gardien --dossier \"{data}\"");
+            let cmd = format!("\"{exe_s}\" --gardien --dossier {}", win_arg(&data));
             if !commande_ok(system_tool("reg"), &["add", key, "/v", GARDIEN_WIN, "/t", "REG_SZ", "/d", &cmd, "/f"]) {
                 return Err("écriture du registre impossible".into());
             }
@@ -670,11 +717,20 @@ mod tests_lien {
     #[test]
     fn fichiers_du_gardien() {
         let p = gardien_plist("/Applications/NumFranc.app/Contents/MacOS/NumFranc", "/Users/x/Library/Application Support/NumFranc");
-        assert!(p.contains("<key>KeepAlive</key><true/>"));
+        assert!(p.contains("<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>"));
         assert!(p.contains("<string>--gardien</string>"));
         let u = gardien_systemd("/usr/bin/numfranc", "/home/x/.numfranc");
         assert!(u.contains("ExecStart=\"/usr/bin/numfranc\" --gardien --dossier \"/home/x/.numfranc\""));
-        assert!(u.contains("Restart=always"));
+        assert!(u.contains("Restart=on-failure"));
+        // Guillemets Windows : un \\ final est doublé.
+        assert_eq!(win_arg("D:\\"), "\"D:\\\\\"");
+        assert_eq!(win_arg("C:\\Users\\x"), "\"C:\\Users\\x\"");
+        assert!(chemin_durable("/Volumes/NumFranc/NumFranc.app/Contents/MacOS/NumFranc").is_err());
+        assert!(chemin_durable("/Applications/NumFranc.app/Contents/MacOS/NumFranc").is_ok());
+        assert!(chemin_durable("/usr/bin/numfranc").is_ok());
+        assert!(chemin_durable("/home/moi/tmp/numfranc").is_ok());
+        assert!(chemin_durable("/tmp/numfranc").is_err());
+        assert!(chemin_durable("C:\\Users\\moi\\Downloads\\NumFranc.exe").is_err());
     }
 
     #[test]
@@ -683,8 +739,6 @@ mod tests_lien {
         assert_eq!(sh_quote("/home/a b"), "'/home/a b'");
         assert_eq!(sh_quote("/x/$(calc)/`id`/\"q\""), "'/x/$(calc)/`id`/\"q\"'");
         assert_eq!(sh_quote("/x/l'appli"), "'/x/l'\\''appli'");
-        // PowerShell : l'apostrophe est doublée, la chaîne ne peut plus être refermée.
-        assert_eq!(ps_quote(r"C:\Users\Public\a';Start-Process calc;'"), r"C:\Users\Public\a'';Start-Process calc;''");
         // XML.
         assert_eq!(xml("/a<b>&c"), "/a&lt;b&gt;&amp;c");
         // Retours à la ligne et caractères spéciaux des fichiers .desktop refusés.

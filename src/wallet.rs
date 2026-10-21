@@ -171,6 +171,9 @@ pub struct Wallet {
     /// Portefeuille gelé : empreinte de la graine, qui n'existe plus sur cet ordinateur.
     pub(crate) frozen: Option<[u8; 32]>,
     pub(crate) protection: Option<Protection>,
+    /// Sceau des réglages de protection, calculé avec la graine (donc avec le code de dépense) :
+    /// quelqu'un qui n'a que le mot de passe d'ouverture ne peut pas installer son propre « gardien ».
+    pub(crate) protection_tag: [u8; 32],
     pub(crate) groups: Vec<Group>,
     /// Graine déjà ouverte (hors verrou) pour l'opération qui suit, valable 2 minutes (voir `SpendSnapshot`).
     pub(crate) pre_seed: Option<(std::time::Instant, Zeroizing<[u8; 32]>)>,
@@ -191,6 +194,22 @@ pub(crate) fn derive(seed: &[u8; 32], index: u32) -> KeyPair {
     data.extend_from_slice(&index.to_be_bytes());
     let h = sha3_512(&data);
     KeyPair::from_seed(h[..32].try_into().unwrap())
+}
+
+/// Sceau des réglages de protection (clé tirée de la graine).
+pub(crate) fn protection_tag(seed: &[u8; 32], p: &Protection) -> [u8; 32] {
+    let mut d = Zeroizing::new(b"NFR-protection-v1".to_vec());
+    d.extend_from_slice(seed);
+    d.extend_from_slice(&p.threshold.to_be_bytes());
+    d.extend_from_slice(&p.delay_secs.to_be_bytes());
+    match &p.guardian {
+        Some(g) => {
+            d.push(1);
+            d.extend_from_slice(g);
+        }
+        None => d.push(0),
+    }
+    sha3_512(&d)[..32].try_into().unwrap()
 }
 
 pub(crate) fn address_of(kp: &KeyPair) -> Address {
@@ -381,6 +400,7 @@ impl Wallet {
             vault: None,
             frozen: None,
             protection: None,
+            protection_tag: [0; 32],
             groups: Vec::new(),
             pre_seed: None,
         };
@@ -517,6 +537,7 @@ impl Wallet {
             vault: None,
             frozen: None,
             protection: None,
+            protection_tag: [0; 32],
             groups: Vec::new(),
             pre_seed: None,
         };
@@ -544,7 +565,8 @@ impl Wallet {
 
     fn decode_extras(&mut self, r: &mut Reader) -> Result<(), crate::encoding::DecodeError> {
         use crate::encoding::DecodeError;
-        if r.u8()? != 1 {
+        let version = r.u8()?;
+        if version != 1 && version != 2 {
             return Err(DecodeError("version de section inconnue"));
         }
         self.frozen = match r.u8()? {
@@ -560,6 +582,10 @@ impl Wallet {
                     0 => None,
                     _ => Some(r.array()?),
                 };
+                // Version 1 (avant la v1.2.3) : pas de sceau ; il faudra réenregistrer la protection avec le code.
+                if version == 2 {
+                    self.protection_tag = r.array()?;
+                }
                 Some(Protection { threshold, delay_secs, guardian })
             }
         };
@@ -582,7 +608,8 @@ impl Wallet {
     }
 
     fn encode_extras(&self, out: &mut Vec<u8>) {
-        out.push(1);
+        // Version 1 tant qu'aucune protection n'est réglée : le fichier reste lisible par les versions d'avant.
+        out.push(if self.protection.is_some() { 2 } else { 1 });
         match &self.frozen {
             Some(t) => {
                 out.push(1);
@@ -602,6 +629,7 @@ impl Wallet {
                     }
                     None => out.push(0),
                 }
+                out.extend_from_slice(&self.protection_tag);
             }
             None => out.push(0),
         }

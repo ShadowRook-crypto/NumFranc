@@ -35,7 +35,12 @@ const PAUSE_RELANCE: Duration = Duration::from_secs(10);
 
 fn age(p: &Path) -> Option<Duration> {
     let m = std::fs::metadata(p).ok()?.modified().ok()?;
-    Some(SystemTime::now().duration_since(m).unwrap_or(Duration::ZERO))
+    // Date dans le futur (horloge reculée) : on considère le battement comme ancien, pas comme tout frais.
+    match SystemTime::now().duration_since(m) {
+        Ok(a) => Some(a),
+        Err(e) if e.duration() < Duration::from_secs(5) => Some(Duration::ZERO),
+        Err(_) => Some(Duration::from_secs(u32::MAX as u64)),
+    }
 }
 
 fn toucher(p: &Path) {
@@ -136,8 +141,9 @@ pub fn gardien(dir: &Path) {
     };
     if verrou.try_lock().is_err() {
         // Un autre gardien veille déjà sur ce dossier : on attend un peu (pour ne pas être relancé en boucle).
+        // Code d'erreur : le système relancera ce gardien plus tard (au cas où l'autre s'arrête).
         std::thread::sleep(Duration::from_secs(60));
-        return;
+        std::process::exit(1);
     }
     let mut enfant: Option<(std::process::Child, Instant)> = None;
     let mut prochain = Instant::now();
@@ -160,6 +166,15 @@ pub fn gardien(dir: &Path) {
         }
         if !reglages.permanent {
             return;
+        }
+        // Le programme a été remplacé par une mise à jour du système (Linux : « (deleted) ») :
+        // on s'arrête en erreur pour que le système relance le gardien avec la nouvelle version.
+        if programme().is_none_or(|p| !p.exists()) {
+            if let Some((c, _)) = &mut enfant {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            std::process::exit(1);
         }
         if enfant.is_none() && !fenetre && Instant::now() >= prochain && !verrou_tenu(dir) {
             match lancer_fond(dir) {

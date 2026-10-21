@@ -103,7 +103,10 @@ pub fn run(node: &Arc<Node>, parts: &[&str]) -> Option<Result<(), String>> {
             }
             Ok(())
         }
-        ["protection", "off"] => node.wallet.lock().unwrap().set_protection(None).map(|_| println!("Protection désactivée.")),
+        ["protection", "off"] => (|| {
+            let c = code(node)?;
+            node.wallet.lock().unwrap().set_protection(None, Some(&c)).map(|_| println!("Protection désactivée."))
+        })(),
         ["protection", th, delay, rest @ ..] => (|| {
             let guardian = match rest {
                 [] => None,
@@ -111,7 +114,8 @@ pub fn run(node: &Arc<Node>, parts: &[&str]) -> Option<Result<(), String>> {
                 _ => return Err("usage : protection SEUIL DÉLAI [gardien ADRESSE]".into()),
             };
             let p = Protection { threshold: parse_amount(th)?, delay_secs: parse_lock_duration(delay)?, guardian };
-            node.wallet.lock().unwrap().set_protection(Some(p))?;
+            let c = code(node)?;
+            node.wallet.lock().unwrap().set_protection(Some(p), Some(&c))?;
             println!("Protection enregistrée.");
             Ok(())
         })(),

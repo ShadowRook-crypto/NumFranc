@@ -9,6 +9,24 @@ use std::io::{self, Read, Write};
 
 pub const MAX_PAYLOAD: usize = MAX_BLOCK_SIZE + 1_024;
 
+/// Début du message d'erreur d'une commande inconnue (version plus récente du protocole) : ignorée, sans exclusion.
+pub const UNKNOWN_COMMAND: &str = "commande inconnue";
+
+/// Taille maximale du contenu selon la commande : on refuse avant de réserver la mémoire.
+fn max_payload(cmd: &str) -> usize {
+    match cmd {
+        "verack" | "getaddr" => 0,
+        "version" => 4 + 8 + 2 + 8,
+        "tip" | "ping" | "pong" => 8,
+        "getblocks" => 9 + 200 * 64,
+        "addr" => 3 + 1_000 * 256,
+        "tx" => crate::config::MAX_TX_SIZE,
+        "block" => MAX_PAYLOAD,
+        // Commande inconnue : lue (pour rester synchronisé sur la connexion) puis ignorée, si elle est petite.
+        _ => 64 * 1024,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     Version { version: u32, height: u64, listen_port: u16, nonce: u64 },
@@ -104,7 +122,7 @@ impl Message {
                 }
                 Message::Addr(v)
             }
-            _ => return Err(DecodeError("commande inconnue")),
+            _ => return Err(DecodeError(UNKNOWN_COMMAND)),
         };
         r.finish()?;
         Ok(m)
@@ -136,11 +154,15 @@ pub fn read_message(r: &mut impl Read) -> io::Result<Result<Message, String>> {
     let end = cmd_raw.iter().position(|&b| b == 0).unwrap_or(12);
     let cmd = String::from_utf8_lossy(&cmd_raw[..end]).to_string();
     let len = u32::from_be_bytes(head[16..20].try_into().unwrap()) as usize;
-    if len > MAX_PAYLOAD {
+    if len > MAX_PAYLOAD || len > max_payload(&cmd) {
         return Ok(Err("message trop grand".into()));
     }
-    let mut payload = vec![0u8; len];
-    r.read_exact(&mut payload)?;
+    // Lecture par morceaux : la mémoire n'est réservée qu'au fur et à mesure que les octets arrivent.
+    let mut payload = Vec::with_capacity(len.min(64 * 1024));
+    r.take(len as u64).read_to_end(&mut payload)?;
+    if payload.len() != len {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "message coupé"));
+    }
     if hash512(&payload)[..4] != head[20..24] {
         return Ok(Err("somme de contrôle invalide".into()));
     }

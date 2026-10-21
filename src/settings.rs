@@ -63,6 +63,11 @@ impl Default for Settings {
     }
 }
 
+/// Pas plus de cœurs que l'ordinateur n'en a (un fichier modifié ne peut pas lancer 100 000 fils).
+fn max_coeurs() -> usize {
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2)
+}
+
 fn file(dir: &Path) -> PathBuf {
     dir.join("reglages.txt")
 }
@@ -81,8 +86,8 @@ impl Settings {
                 "horaire" => s.schedule = v == "oui",
                 "nuit_debut" => s.night_start = v.parse().unwrap_or(22).min(23),
                 "nuit_fin" => s.night_end = v.parse().unwrap_or(7).min(23),
-                "coeurs_nuit" => s.cores_night = v.parse().unwrap_or(s.cores_night),
-                "coeurs_jour" => s.cores_day = v.parse().unwrap_or(s.cores_day),
+                "coeurs_nuit" => s.cores_night = v.parse().unwrap_or(s.cores_night).min(max_coeurs()),
+                "coeurs_jour" => s.cores_day = v.parse().unwrap_or(s.cores_day).min(max_coeurs()),
                 "expert" => s.expert = v == "oui",
                 "port_manuel" => s.manual_port = v == "oui",
                 "permanent" => s.permanent = v == "oui",
@@ -113,8 +118,13 @@ impl Settings {
             if self.mine { "oui" } else { "non" },
             self.reward_address
         );
-        let _ = std::fs::create_dir_all(dir);
-        let _ = std::fs::write(file(dir), text);
+        crate::install::dossier_prive(dir);
+        // Écriture atomique : fichier temporaire puis renommage. Un lecteur (gardien, nœud d'arrière-plan)
+        // ne voit jamais un fichier à moitié écrit, et une coupure de courant ne remet pas tout à zéro.
+        let tmp = dir.join("reglages.txt.tmp");
+        if std::fs::write(&tmp, text).is_ok() {
+            let _ = std::fs::rename(&tmp, file(dir));
+        }
     }
 
     /// Est-ce la nuit à l'heure `hour` (0-23) ? La nuit peut passer minuit (ex. 22 h → 7 h).
@@ -155,7 +165,7 @@ mod tests {
     #[test]
     fn sauvegarde_et_relecture() {
         let dir = std::env::temp_dir().join(format!("nfr-reglages-{}", std::process::id()));
-        let s = Settings { dark: true, accent: 3, lang: Lang::De, schedule: true, night_start: 21, night_end: 6, cores_night: 3, cores_day: 1, expert: true, manual_port: true, permanent: true, permanent_asked: true, mine: false, reward_address: "NFR1-ABCD".into() };
+        let s = Settings { dark: true, accent: 3, lang: Lang::De, schedule: true, night_start: 21, night_end: 6, cores_night: 1, cores_day: 1, expert: true, manual_port: true, permanent: true, permanent_asked: true, mine: false, reward_address: "NFR1-ABCD".into() };
         s.save(&dir);
         assert_eq!(Settings::load(&dir), s);
         std::fs::remove_dir_all(&dir).unwrap();

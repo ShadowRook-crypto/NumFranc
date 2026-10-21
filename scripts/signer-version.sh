@@ -82,6 +82,15 @@ if curl -sfL -o /dev/null "$URL/SHA3SUMS.txt.sig"; then
   stop "La version v$V est déjà signée sur GitHub : rien à faire."
 fi
 ok "SHA3SUMS.txt de la version $V téléchargé"
+# Contrôle humain avant de signer : ce que tu signes doit être exactement ce que tu as publié.
+MINI_EN_LIGNE="$(sed -n 2p "$OUT/SHA3SUMS.txt" | sed -n 's/^# Version minimale sûre //p')"
+MINI_DEPOT="$(tr -dc '0-9.' < "$DEPOT/scripts/version-minimale-sure.txt" 2>/dev/null)"
+[ "${MINI_EN_LIGNE:-0}" = "${MINI_DEPOT:-0}" ] || stop "Version minimale sûre différente : en ligne « ${MINI_EN_LIGNE:-0} », dans ton dépôt « ${MINI_DEPOT:-0} ». Ne signe pas : regarde ce qui s'est passé."
+echo
+echo "Tu vas signer :  version $V  —  version minimale sûre : ${MINI_EN_LIGNE:-0}"
+echo "Fichiers listés : $(grep -vc '^#' "$OUT/SHA3SUMS.txt")  (dont installeurs : $(grep -c '  installeurs/' "$OUT/SHA3SUMS.txt"))"
+echo "Si ce n'est pas ce que tu attends, fais Ctrl+C. Sinon appuie sur Entrée."
+read -r _
 
 # ---------------------------------------------------------------------------
 titre "4/6  Coupure d'Internet"

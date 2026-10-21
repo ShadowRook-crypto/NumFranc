@@ -65,6 +65,10 @@ pub fn analyser(manifeste: &[u8], signature: &[u8], cle: &[u8; PUBLIC_KEY_LEN], 
 
 /// Télécharge un fichier avec curl (https uniquement, taille et durée limitées).
 fn telecharger(nom: &str, destination: &Path) -> Result<Vec<u8>, String> {
+    // Nom temporaire unique : deux vérifications en même temps ne se marchent pas dessus, et la liste
+    // gardée pour l'installation (même dossier) n'est jamais écrasée ici.
+    let dossier = destination.parent().unwrap_or(Path::new("."));
+    let destination = &nom_temporaire(dossier, nom);
     let url = format!("{BASE}{nom}");
     let ok = std::process::Command::new(crate::install::system_tool("curl"))
         .args(["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "30", "--max-filesize", "1000000", "-o"])
@@ -73,11 +77,12 @@ fn telecharger(nom: &str, destination: &Path) -> Result<Vec<u8>, String> {
         .status()
         .map_err(|_| "curl est introuvable sur cet ordinateur".to_string())?;
     if !ok.success() {
+        let _ = std::fs::remove_file(destination);
         return Err(format!("téléchargement de {nom} impossible (pas d'Internet, ou fichier pas encore publié)"));
     }
-    let data = std::fs::read(destination).map_err(|e| e.to_string())?;
+    let data = std::fs::read(destination).map_err(|e| e.to_string());
     let _ = std::fs::remove_file(destination);
-    Ok(data)
+    data
 }
 
 /// Vérifie en ligne s'il existe une version plus récente, signée par l'auteur.
@@ -171,6 +176,27 @@ pub fn peut_installer() -> bool {
     nom_installeur().is_some() && crate::install::installe_par_paquet()
 }
 
+/// Une seule vérification ou installation de mise à jour à la fois (bouton + vérification automatique).
+pub static VERROU_MAJ: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+const ETAT: &str = "maj-etat.txt";
+
+/// Mémoire de la plus récente liste signée déjà vue : (version, version minimale sûre).
+fn etat_lu(dossier: &Path) -> (String, String) {
+    let t = std::fs::read_to_string(dossier.join(ETAT)).unwrap_or_default();
+    let champ = |k: &str| t.lines().find_map(|l| l.strip_prefix(k)).map(|v| v.trim().to_string()).unwrap_or_else(|| "0".into());
+    (champ("vue="), champ("minimale="))
+}
+
+/// Au démarrage : si une liste signée déjà vue déclarait cette version dangereuse, l'alerte reste
+/// active (même sans Internet, même si quelqu'un sert ensuite une ancienne liste).
+pub fn charger_etat(dossier: &Path) {
+    let (_, mini) = etat_lu(dossier);
+    if plus_recente(&mini, env!("CARGO_PKG_VERSION")) {
+        DANGEREUSE.store(true, Ordering::SeqCst);
+    }
+}
+
 /// Vérifie le manifeste signé de la dernière version et garde son texte (pour les empreintes).
 pub fn verifier_tout(dossier: &Path) -> Result<Info, String> {
     let tmp = dossier.join("maj");
@@ -179,61 +205,167 @@ pub fn verifier_tout(dossier: &Path) -> Result<Info, String> {
     let signature = telecharger("SHA3SUMS.txt.sig", &tmp.join("SHA3SUMS.txt.sig"))
         .map_err(|_| "la dernière version n'est pas encore signée : réessaie plus tard".to_string())?;
     let r = analyser(&manifeste, &signature, &RELEASE_PUBLIC_KEY, env!("CARGO_PKG_VERSION"))?;
-    let texte = String::from_utf8(manifeste).map_err(|_| "manifeste illisible".to_string())?;
+    let texte = String::from_utf8(manifeste.clone()).map_err(|_| "manifeste illisible".to_string())?;
     let (version, nouvelle) = match r {
         Resultat::Nouvelle(v) => (v, true),
         Resultat::AJour(v) => (v, false),
     };
-    let info = Info { version, nouvelle, minimale: version_minimale(&texte), manifeste: texte };
-    DANGEREUSE.store(info.dangereuse(), Ordering::SeqCst);
+    // Retour en arrière refusé : une liste signée plus ancienne que la plus récente déjà vue est ignorée
+    // (quelqu'un pourrait resservir une vieille liste pour cacher une alerte de sécurité).
+    let (vue, mini_vue) = etat_lu(dossier);
+    if plus_recente(&vue, &version) {
+        return Err("liste signée plus ancienne que celle déjà vue : ignorée".into());
+    }
+    // Une « version minimale » plus récente que la version publiée elle-même serait une erreur : ignorée.
+    let minimale = version_minimale(&texte).filter(|m| !plus_recente(m, &version));
+    let mini = match &minimale {
+        Some(m) if plus_recente(m, &mini_vue) => m.clone(),
+        _ => mini_vue,
+    };
+    let _ = std::fs::write(dossier.join(ETAT), format!("vue={version}\nminimale={mini}\n"));
+    // Liste et signature gardées : l'installation les revérifie juste avant d'installer.
+    let _ = std::fs::write(tmp.join("SHA3SUMS.txt"), &manifeste);
+    let _ = std::fs::write(tmp.join("SHA3SUMS.txt.sig"), &signature);
+    let info = Info { version, nouvelle, minimale: Some(mini.clone()).filter(|m| m != "0"), manifeste: texte };
+    DANGEREUSE.store(plus_recente(&mini, env!("CARGO_PKG_VERSION")), Ordering::SeqCst);
     Ok(info)
 }
 
+fn hex_sha3(d: &[u8]) -> String {
+    crate::encoding::hex(&crate::hashing::sha3_512(d))
+}
+
+fn nom_temporaire(dir: &Path, base: &str) -> PathBuf {
+    let mut r = [0u8; 8];
+    let _ = getrandom::getrandom(&mut r);
+    dir.join(format!("{base}.{}.tmp", crate::encoding::hex(&r)))
+}
+
 /// Télécharge l'installeur de la nouvelle version et vérifie son empreinte (manifeste signé).
-/// Renvoie le chemin du fichier vérifié.
+/// Le téléchargement va dans un fichier temporaire au nom aléatoire, renommé seulement une fois vérifié.
 pub fn telecharger_installeur(dossier: &Path, info: &Info) -> Result<PathBuf, String> {
     let nom = nom_installeur().ok_or("pas d'installeur pour ce système")?;
     let attendue = empreinte(&info.manifeste, nom).ok_or("installeur absent de la liste signée")?;
     let dir = dossier.join("maj");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let fichier = dir.join(nom);
-    // Déjà téléchargé et vérifié ?
-    if let Ok(d) = std::fs::read(&fichier) {
-        if crate::encoding::hex(&crate::hashing::sha3_512(&d)) == attendue {
-            return Ok(fichier);
-        }
+    if std::fs::read(&fichier).is_ok_and(|d| hex_sha3(&d) == attendue) {
+        return Ok(fichier);
     }
+    let tmp = nom_temporaire(&dir, nom);
     let url = format!("{BASE}{nom}");
     let ok = std::process::Command::new(crate::install::system_tool("curl"))
         .args(["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "900", "--max-filesize", "300000000", "-o"])
-        .arg(&fichier)
+        .arg(&tmp)
         .arg(&url)
         .stdin(std::process::Stdio::null())
         .status()
         .map_err(|_| "curl est introuvable sur cet ordinateur".to_string())?;
-    if !ok.success() {
-        let _ = std::fs::remove_file(&fichier);
-        return Err(format!("téléchargement de {nom} impossible"));
+    let d = if ok.success() { std::fs::read(&tmp).unwrap_or_default() } else { Vec::new() };
+    if !ok.success() || hex_sha3(&d) != attendue {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(if ok.success() {
+            "fichier téléchargé différent de celui signé par l'auteur : effacé, rien n'est installé".into()
+        } else {
+            format!("téléchargement de {nom} impossible")
+        });
     }
-    let d = std::fs::read(&fichier).map_err(|e| e.to_string())?;
-    if crate::encoding::hex(&crate::hashing::sha3_512(&d)) != attendue {
-        let _ = std::fs::remove_file(&fichier);
-        return Err("fichier téléchargé différent de celui signé par l'auteur : effacé, rien n'est installé".into());
-    }
+    std::fs::rename(&tmp, &fichier).map_err(|e| e.to_string())?;
     Ok(fichier)
 }
 
-/// Installe le fichier vérifié et prépare le redémarrage. En cas de succès, l'appelant doit quitter
+/// Relit la liste signée et l'installeur gardés dans `dir`, et revérifie TOUT juste avant l'installation :
+/// signature de l'auteur, version plus récente que celle installée, empreinte de l'installeur.
+/// Renvoie le contenu vérifié (en mémoire : il ne peut plus être échangé entre la vérification et l'usage).
+pub fn reverifier(dir: &Path) -> Result<Vec<u8>, String> {
+    let lire = |nom: &str| -> Result<Vec<u8>, String> {
+        let mut o = std::fs::OpenOptions::new();
+        o.read(true);
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            o.custom_flags(0o400000); // O_NOFOLLOW : pas de lien symbolique
+        }
+        let mut f = o.open(dir.join(nom)).map_err(|e| format!("{nom} : {e}"))?;
+        let mut v = Vec::new();
+        std::io::Read::read_to_end(&mut f, &mut v).map_err(|e| e.to_string())?;
+        Ok(v)
+    };
+    let nom = nom_installeur().ok_or("pas d'installeur pour ce système")?;
+    let manifeste = lire("SHA3SUMS.txt")?;
+    let signature = lire("SHA3SUMS.txt.sig")?;
+    match analyser(&manifeste, &signature, &RELEASE_PUBLIC_KEY, env!("CARGO_PKG_VERSION"))? {
+        Resultat::Nouvelle(_) => {}
+        Resultat::AJour(_) => return Err("pas plus récent que la version installée : rien à installer".into()),
+    }
+    let texte = String::from_utf8(manifeste).map_err(|_| "manifeste illisible".to_string())?;
+    let attendue = empreinte(&texte, nom).ok_or("installeur absent de la liste signée")?;
+    let d = lire(nom)?;
+    if hex_sha3(&d) != attendue {
+        return Err("l'installeur a été modifié depuis le téléchargement : rien n'est installé".into());
+    }
+    Ok(d)
+}
+
+/// Installe la mise à jour téléchargée et prépare le redémarrage. En cas de succès, l'appelant doit quitter
 /// NumFranc tout de suite : la nouvelle version se lance d'elle-même.
 pub fn installer(fichier: &Path) -> Result<(), String> {
     if !peut_installer() {
         return Err("NumFranc n'a pas été installé avec l'installeur officiel : utilise la page de téléchargement".into());
     }
-    installer_systeme(fichier)
+    let _verrou = VERROU_MAJ.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = fichier.parent().ok_or("dossier invalide")?;
+    // Chemin complet : l'assistant administrateur (Linux) ne démarre pas dans le même dossier.
+    let dir = dir.canonicalize().map_err(|e| e.to_string())?;
+    installer_systeme(&dir)
+}
+
+/// Linux, en administrateur (lancé par pkexec) : revérifie tout depuis le dossier de l'utilisateur, copie
+/// l'installeur vérifié dans un dossier réservé à root, puis l'installe avec dpkg.
+#[cfg(target_os = "linux")]
+pub fn appliquer_en_root(dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let d = reverifier(dir)?;
+    let cache = Path::new("/var/cache/numfranc");
+    let _ = std::fs::remove_dir_all(cache);
+    std::fs::DirBuilder::new().mode(0o700).create(cache).map_err(|e| format!("{} : {e}", cache.display()))?;
+    let deb = cache.join("mise-a-jour.deb");
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&deb).map_err(|e| e.to_string())?;
+    std::io::Write::write_all(&mut f, &d).map_err(|e| e.to_string())?;
+    drop(f);
+    let st = std::process::Command::new("/usr/bin/dpkg").arg("-i").arg(&deb).status().map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_dir_all(cache);
+    if st.success() { Ok(()) } else { Err("dpkg a échoué".into()) }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn appliquer_en_root(_dir: &Path) -> Result<(), String> {
+    Err("réservé à Linux".into())
+}
+
+/// Copie privée (nom aléatoire, créée exprès) du contenu vérifié, pour l'installer sans qu'il puisse changer.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn copie_privee(dir: &Path, d: &[u8], ext: &str) -> Result<PathBuf, String> {
+    // L'extension doit rester à la fin (Windows ne lance un programme que s'il finit par .exe).
+    let mut r = [0u8; 8];
+    let _ = getrandom::getrandom(&mut r);
+    let p = dir.join(format!("verifie-{}.{ext}", crate::encoding::hex(&r)));
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&p).map_err(|e| e.to_string())?;
+    std::io::Write::write_all(&mut f, d).map_err(|e| e.to_string())?;
+    Ok(p)
 }
 
 #[cfg(target_os = "macos")]
-fn installer_systeme(fichier: &Path) -> Result<(), String> {
+fn installer_systeme(dir: &Path) -> Result<(), String> {
+    let d = reverifier(dir)?;
+    let copie = copie_privee(dir, &d, "dmg")?;
+    let r = installer_dmg(&copie);
+    let _ = std::fs::remove_file(&copie);
+    r
+}
+
+#[cfg(target_os = "macos")]
+fn installer_dmg(fichier: &Path) -> Result<(), String> {
     use std::process::Command;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.canonicalize().unwrap_or(exe);
@@ -271,11 +403,13 @@ fn installer_systeme(fichier: &Path) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn installer_systeme(fichier: &Path) -> Result<(), String> {
+fn installer_systeme(dir: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
+    let d = reverifier(dir)?;
+    let fichier = copie_privee(dir, &d, "exe")?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let (f, e) = (fichier.display().to_string(), exe.display().to_string());
-    if f.contains('"') || e.contains('"') {
+    if f.contains(['"', '%', '!']) || e.contains(['"', '%', '!']) {
         return Err("chemin invalide".into());
     }
     // L'installeur (silencieux) arrête NumFranc, remplace le programme et relance le gardien ;
@@ -290,21 +424,26 @@ fn installer_systeme(fichier: &Path) -> Result<(), String> {
 }
 
 #[cfg(target_os = "linux")]
-fn installer_systeme(fichier: &Path) -> Result<(), String> {
+fn installer_systeme(dir: &Path) -> Result<(), String> {
     use std::process::Command;
+    // Vérification côté utilisateur d'abord (message clair), puis le programme installé (/usr/bin/numfranc,
+    // appartenant à root) revérifie tout lui-même en administrateur avant d'appeler dpkg.
+    reverifier(dir)?;
     // Le système demande le mot de passe de l'ordinateur (fenêtre de pkexec).
-    let st = Command::new("pkexec").arg("/usr/bin/dpkg").arg("-i").arg(fichier).status().map_err(|_| "pkexec introuvable".to_string())?;
+    let st = Command::new("/usr/bin/pkexec").arg("/usr/bin/numfranc").arg("--appliquer-maj").arg(dir).status().map_err(|_| "pkexec introuvable".to_string())?;
     if !st.success() {
         return Err("installation annulée ou refusée (mot de passe ?)".into());
     }
-    let _ = std::fs::remove_file(fichier);
-    let _ = Command::new("systemctl").args(["--user", "restart", "numfranc-gardien.service"]).status();
+    if let Some(n) = nom_installeur() {
+        let _ = std::fs::remove_file(dir.join(n));
+    }
+    let _ = Command::new("/usr/bin/systemctl").args(["--user", "restart", "numfranc-gardien.service"]).status();
     Command::new("/usr/bin/numfranc").stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-fn installer_systeme(_fichier: &Path) -> Result<(), String> {
+fn installer_systeme(_dir: &Path) -> Result<(), String> {
     Err("système non pris en charge".into())
 }
 

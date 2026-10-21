@@ -47,7 +47,9 @@ Options de lancement :
                       l'ordinateur, se relance tout seul, mine vers l'adresse donnée
   --desinstaller-serveur   (Linux, avec sudo) retirer le nœud permanent
   --reduit            démarrer la fenêtre réduite (utilisé par le démarrage automatique)
-  --menu              ajouter NumFranc au menu des applications, puis quitter";
+  --menu              ajouter NumFranc au menu des applications, puis quitter
+  --point-de-controle [DOSSIER]
+                      afficher la ligne de point de contrôle à inscrire dans la prochaine version";
 
 const COMMANDS: &str = "\
 Commandes :
@@ -83,6 +85,7 @@ fn parse_args() -> Result<Options, String> {
         reward_to: None,
     };
     let mut args = std::env::args().skip(1);
+    let mut dossier_vu = false;
     while let Some(a) = args.next() {
         let mut val = || args.next().ok_or(format!("valeur manquante après {a}"));
         match a.as_str() {
@@ -90,13 +93,23 @@ fn parse_args() -> Result<Options, String> {
             "--port" => o.port = val()?.parse().map_err(|_| "port invalide")?,
             "--coeurs" | "--threads" => o.threads = val()?.parse().map_err(|_| "nombre de cœurs invalide")?,
             "--sans-minage" | "--no-mine" => o.mine = false,
-            "--dossier" | "--datadir" => o.data_dir = PathBuf::from(val()?),
+            "--dossier" | "--datadir" => {
+                // Un seul --dossier : un second (glissé par un lien piégé) est refusé.
+                if dossier_vu {
+                    return Err("--dossier ne peut être donné qu'une fois".into());
+                }
+                dossier_vu = true;
+                o.data_dir = PathBuf::from(val()?)
+            }
             "--adresse-minage" | "--mining-address" => o.reward_to = Some(numfranc::wallet::parse_address(&val()?)?),
             // Installation du nœud permanent : leurs valeurs sont lues plus loin.
             "--installer-serveur" | "--install-server" => {
                 let _: Vec<String> = args.by_ref().collect();
             }
             "--desinstaller-serveur" | "--uninstall-server" | "--gardien" | "--fond" => {}
+            "--appliquer-maj" => {
+                let _ = val()?;
+            }
             "--console" | "--serveur" | "--server" | "--menu" | "--reduit" => {}
             // Ancien macOS : numéro de processus ajouté par le Finder au lancement d'une app.
             l if l.starts_with("-psn_") => {}
@@ -515,6 +528,34 @@ fn console(node: Arc<Node>) {
 }
 
 fn main() {
+    // Mise à jour Linux, en administrateur (lancé par pkexec depuis la fenêtre) : rien d'autre n'est fait.
+    let brut: Vec<String> = std::env::args().collect();
+    if brut.len() == 3 && brut[1] == "--appliquer-maj" {
+        match numfranc::maj::appliquer_en_root(std::path::Path::new(&brut[2])) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("Erreur : {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    // Ligne de point de contrôle pour la prochaine version (lecture seule, sur une copie de la chaîne).
+    if brut.get(1).is_some_and(|a| a == "--point-de-controle") {
+        let dossiers: Vec<PathBuf> = match brut.get(2) {
+            Some(d) => vec![PathBuf::from(d)],
+            None => vec![default_data_dir(), PathBuf::from("/var/lib/numfranc")],
+        };
+        match numfranc::chain::point_de_controle(&dossiers) {
+            Ok(t) => {
+                println!("{t}");
+                std::process::exit(0)
+            }
+            Err(e) => {
+                eprintln!("Erreur : {e}");
+                std::process::exit(1);
+            }
+        }
+    }
     println!("NumFranc (NFR) v{} — monnaie post-quantique (ML-DSA-87, SHA3-512, minage Argon2d)", env!("CARGO_PKG_VERSION"));
     let opts = match parse_args() {
         Ok(o) => o,
@@ -532,7 +573,9 @@ fn main() {
         opts.data_dir = data;
     }
     // Fichier noeuds.txt (à côté du lanceur, ou dans le dossier des données) : un nœud par ligne, ex. 192.168.1.35:6910
-    for file in [PathBuf::from("noeuds.txt"), opts.data_dir.join("noeuds.txt")] {
+    // (Plus dans le dossier courant : un lien ouvert depuis le navigateur hérite d'un dossier quelconque.)
+    let lanceur = numfranc::install::dossier_lanceur().map(|d| d.join("noeuds.txt"));
+    for file in lanceur.into_iter().chain([opts.data_dir.join("noeuds.txt")]) {
         if let Ok(list) = std::fs::read_to_string(file) {
             for l in list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
                 if !opts.peers.iter().any(|p| p == l) {
@@ -545,6 +588,8 @@ fn main() {
     let has = |flag: &str| std::env::args().any(|a| a == flag);
     let settings = numfranc::settings::Settings::load(&opts.data_dir);
     numfranc::i18n::set_lang(settings.lang);
+    // Alerte de sécurité déjà reçue (liste signée) : elle reste active dès le démarrage.
+    numfranc::maj::charger_etat(&opts.data_dir);
 
     // « Toujours allumé » : le gardien (lancé par le système) et le nœud d'arrière-plan (lancé par le gardien).
     if has("--gardien") {

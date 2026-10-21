@@ -530,3 +530,13 @@ NumFranc checks by itself at startup and then every 6 hours. A new version is of
 Last automatic update: {e}	Letztes automatisches Update: {e}
 It downloads and checks itself: the « Install and restart » button appears at the top of the window.	Sie wird automatisch heruntergeladen und geprüft: Die Schaltfläche „Installieren und neu starten“ erscheint oben im Fenster.
 sending blocked: this version has a known security flaw. Install the update (Settings > Updates), then try again.	Senden gesperrt: Diese Version hat eine bekannte Sicherheitslücke. Installiere das Update (Einstellungen > Updates) und versuche es erneut.
+[!] The background mining address was not yours: it has been reset. If you did not change it yourself, have this computer checked.	[!] Die Mining-Adresse im Hintergrund gehörte nicht dir: Sie wurde zurückgesetzt. Wenn du sie nicht selbst geändert hast, lass diesen Computer überprüfen.
+date;block;type;amount (NFR);message;locked until\n	Datum;Block;Typ;Betrag (NFR);Nachricht;gesperrt bis\n
+NumFranc is running from a temporary folder, a USB drive or Downloads: install it first with the official installer.	NumFranc läuft aus einem temporären Ordner, von einem USB-Stick oder aus Downloads: Installiere es zuerst mit dem offiziellen Installationsprogramm.
+the protection settings were changed without your spending code: check them and save them again (Advanced tab) before sending	die Schutzeinstellungen wurden ohne deinen Ausgabecode geändert: Prüfe sie und speichere sie erneut (Reiter Erweitert), bevor du sendest
+amount too small: at least 0.0001 NFR	Betrag zu klein: mindestens 0,0001 NFR
+this wallet's addresses do not match its seed (modified file?): restore it with your recovery pieces	die Adressen dieser Wallet passen nicht zu ihrem Seed (Datei verändert?): Stelle sie mit deinen Wiederherstellungsteilen wieder her
+proposal refused: it contains a name operation	Vorschlag abgelehnt: Er enthält eine Pseudonym-Operation
+proposal refused: an output is locked or can be taken back by someone	Vorschlag abgelehnt: Eine Ausgabe ist gesperrt oder kann von jemandem zurückgeholt werden
+proposal refused: the inputs come from several groups	Vorschlag abgelehnt: Die Eingänge stammen aus mehreren Gruppen
+A payment cancelled by the guardian always comes back to you (network rule from 9 November 2026; before that date, the guardian can send it elsewhere). The spending code above is required to change these settings.	Eine vom Wächter stornierte Zahlung kommt immer zu dir zurück (Netzwerkregel ab dem 9. November 2026; vor diesem Datum kann der Wächter sie woanders hinschicken). Zum Ändern dieser Einstellungen ist der Ausgabecode oben nötig.

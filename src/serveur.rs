@@ -127,16 +127,21 @@ pub fn installer(adresse: Option<&str>, coeurs: usize) -> Result<String, String>
     if !est_root() {
         return Err("il faut les droits d'administrateur : relance la commande avec sudo devant".into());
     }
-    if let Some(a) = adresse {
-        crate::wallet::parse_address(a)?;
-    }
+    // Adresse réécrite sous sa forme exacte (espaces ou retours à la ligne collés par erreur retirés).
+    let adresse = match adresse {
+        Some(a) => Some(crate::wallet::address_to_string(&crate::wallet::parse_address(a)?)),
+        None => None,
+    };
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.canonicalize().unwrap_or(exe);
-    if exe.to_string_lossy().contains(char::is_whitespace) {
-        return Err("le chemin du programme contient un espace : installe plutôt le paquet .deb".into());
+    // Le service ne lance que le programme installé par le paquet (/usr/…, appartenant à root) :
+    // pas un fichier qu'un utilisateur pourrait remplacer.
+    let texte = exe.to_string_lossy().to_string();
+    if !texte.starts_with("/usr/") || texte.chars().any(|c| c.is_whitespace() || matches!(c, '%' | '$' | '\\' | '"')) {
+        return Err("installe d'abord le paquet .deb (le programme doit être dans /usr/bin)".into());
     }
     std::fs::write(UNITE, unite(&exe)).map_err(|e| format!("{UNITE} : {e}"))?;
-    std::fs::write(REGLAGES, reglages(adresse, coeurs)).map_err(|e| format!("{REGLAGES} : {e}"))?;
+    std::fs::write(REGLAGES, reglages(adresse.as_deref(), coeurs)).map_err(|e| format!("{REGLAGES} : {e}"))?;
     systemctl(&["daemon-reload"])?;
     // Plus de mise en veille : un serveur doit rester éveillé.
     let mut masque = vec!["mask"];

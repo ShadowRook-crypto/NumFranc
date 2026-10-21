@@ -16,7 +16,7 @@ pub fn log(msg: &str) {
         println!("{msg}");
     }
     let n = SEQ.fetch_add(1, Ordering::SeqCst) + 1;
-    let mut q = EVENTS.lock().unwrap();
+    let mut q = EVENTS.lock().unwrap_or_else(|e| e.into_inner());
     q.push_back((n, msg.to_string()));
     while q.len() > KEEP {
         q.pop_front();
@@ -25,12 +25,12 @@ pub fn log(msg: &str) {
 
 /// Événements de numéro strictement supérieur à `after` (pour les notifications).
 pub fn since(after: u64) -> Vec<(u64, String)> {
-    EVENTS.lock().unwrap().iter().filter(|(n, _)| *n > after).cloned().collect()
+    EVENTS.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|(n, _)| *n > after).cloned().collect()
 }
 
 /// Les `n` derniers événements.
 pub fn recent(n: usize) -> Vec<String> {
-    let q = EVENTS.lock().unwrap();
+    let q = EVENTS.lock().unwrap_or_else(|e| e.into_inner());
     q.iter().skip(q.len().saturating_sub(n)).map(|(_, m)| m.clone()).collect()
 }
 

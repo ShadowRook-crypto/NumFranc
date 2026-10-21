@@ -33,7 +33,8 @@ pub fn is_time_warp(height: u64, timestamp: u64, parent_timestamp: u64) -> bool 
     height % DIFFICULTY_WINDOW == 0 && timestamp.saturating_add(MAX_TIMEWARP) < parent_timestamp
 }
 
-/// Points de contrôle : (hauteur, hash en hexadécimal). À compléter à chaque version publiée.
+/// Points de contrôle : (hauteur, hash en hexadécimal). À compléter à chaque version publiée, avec la ligne
+/// donnée par `numfranc --point-de-controle` sur un nœud à jour.
 pub const CHECKPOINTS: &[(u64, &str)] = &[];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,6 +44,9 @@ pub struct UtxoEntry {
     pub lock_until: u32,
     /// Adresse qui peut reprendre la sortie avant `lock_until` (paiement retenu / annulable).
     pub cancel: Option<Address>,
+    /// Paiement retenu : adresse de celui qui l'a envoyé (première entrée de la transaction). À partir des
+    /// règles v1.3.0, une annulation ne peut renvoyer l'argent qu'à cette adresse.
+    pub refund: Option<Address>,
     pub height: u64,
     pub coinbase: bool,
 }
@@ -130,6 +134,13 @@ pub struct Chain {
     store: Option<File>,
     path: Option<PathBuf>,
     store_len: u64,
+    /// Travail en dessous duquel la limite de réorganisation ne s'applique pas (synchronisation initiale).
+    min_work_reorg: BigUint,
+    /// Points de contrôle en vigueur (ceux du logiciel pour la vraie chaîne ; réglables dans les tests).
+    pub(crate) points: Vec<(u64, String)>,
+    /// Empreintes de blocs entiers déjà jugés invalides : renvoyés en boucle, ils sont refusés sans
+    /// revérifier leurs signatures (le contenu exact est mémorisé, pas seulement l'en-tête).
+    rejets: std::collections::HashSet<[u8; 64]>,
 }
 
 /// Bloc genesis, identique pour tous les nœuds. Sa récompense est envoyée à une
@@ -180,6 +191,7 @@ pub fn retarget(old: &[u8; 64], actual_timespan: u64) -> [u8; 64] {
 /// Vérifie les entrées d'une transaction contre l'ensemble UTXO. Renvoie les frais.
 /// `height` = hauteur du bloc qui contiendra la transaction, `mtp` = temps médian de son parent.
 pub fn check_tx_inputs(utxo: &Utxo, tx: &Transaction, height: u64, mtp: u64) -> Result<u64, String> {
+    let v2 = mtp >= V2_RULES_MTP;
     let mut in_sum = 0u64;
     for i in &tx.inputs {
         let u = utxo.get(&i.prev).ok_or("entrée inexistante ou déjà dépensée")?;
@@ -191,6 +203,13 @@ pub fn check_tx_inputs(utxo: &Utxo, tx: &Transaction, height: u64, mtp: u64) -> 
         let expected = if is_unlocked(u.lock_until, height, mtp) {
             u.address
         } else if let Some(c) = u.cancel {
+            // Règles v1.3.0 : l'argent d'un paiement annulé repart uniquement chez celui qui l'avait envoyé.
+            if v2 {
+                let r = u.refund.ok_or("paiement retenu sans expéditeur connu")?;
+                if tx.outputs.iter().any(|o| o.address != r || o.lock_until != 0 || o.cancel.is_some()) {
+                    return Err("un paiement annulé doit revenir à celui qui l'a envoyé".into());
+                }
+            }
             c
         } else {
             return Err(if u.lock_until < LOCK_TIME_THRESHOLD {
@@ -243,6 +262,18 @@ pub fn check_name_op(names: &Names, tx: &Transaction, fee: u64) -> Result<(), St
     Ok(())
 }
 
+/// Frais détruits (règles v1.3.0) : le prix de chaque pseudo enregistré. `mtp` = temps médian du parent.
+pub fn burned_fees(txs: &[Transaction], mtp: u64) -> u64 {
+    if mtp < V2_RULES_MTP {
+        return 0;
+    }
+    txs.iter()
+        .filter_map(|t| t.name_op.as_ref())
+        .filter(|n| n.kind == NameKind::Register)
+        .map(|n| name_fee(n.name.len()))
+        .fold(0u64, |a, b| a.saturating_add(b))
+}
+
 fn apply_name(names: &mut Names, tx: &Transaction, height: u64, log: &mut Vec<UndoOp>) {
     if let Some(op) = &tx.name_op {
         let prev = names.get(&op.name).cloned();
@@ -262,9 +293,11 @@ fn apply_tx(utxo: &mut Utxo, names: &mut Names, tx: &Transaction, height: u64, l
         }
     }
     let txid = tx.txid();
+    let sender = if coinbase { None } else { tx.inputs.first().map(|i| i.spender()) };
     for (n, o) in tx.outputs.iter().enumerate() {
         let op = OutPoint { txid, vout: n as u32 };
-        utxo.insert(op, UtxoEntry { amount: o.amount, address: o.address, lock_until: o.lock_until, cancel: o.cancel, height, coinbase });
+        let refund = o.cancel.and(sender);
+        utxo.insert(op, UtxoEntry { amount: o.amount, address: o.address, lock_until: o.lock_until, cancel: o.cancel, refund, height, coinbase });
         log.push(UndoOp::Created(op));
     }
     apply_name(names, tx, height, log);
@@ -285,6 +318,8 @@ fn connect_inner(
         fees = fees.checked_add(fee).ok_or("dépassement des frais")?;
         apply_tx(utxo, names, tx, height, log);
     }
+    // Règles v1.3.0 : la part « pseudo » des frais est détruite, le mineur ne la reçoit pas.
+    fees = fees.checked_sub(burned_fees(&block.txs[1..], mtp)).ok_or("frais de pseudo incohérents")?;
     let cb = &block.txs[0];
     let allowed = block_reward(height, total_before(height))
         .checked_add(fees)
@@ -309,6 +344,43 @@ pub fn connect_block(utxo: &mut Utxo, names: &mut Names, block: &Block, height: 
     }
 }
 
+/// Ligne de point de contrôle à copier dans CHECKPOINTS, lue dans la chaîne la plus longue parmi ces
+/// dossiers de données. Travaille sur une copie de blocks.dat : le nœud peut continuer de tourner.
+/// Le bloc choisi est enterré sous au moins 100 blocs (multiple de 100), donc définitif.
+pub fn point_de_controle(dossiers: &[PathBuf]) -> Result<String, String> {
+    let source = dossiers
+        .iter()
+        .map(|d| d.join("blocks.dat"))
+        .filter_map(|p| std::fs::metadata(&p).ok().map(|m| (m.len(), p)))
+        .max_by_key(|(n, _)| *n)
+        .map(|(_, p)| p)
+        .ok_or("aucune chaîne trouvée (blocks.dat) : lance NumFranc au moins une fois, ou indique le dossier : numfranc --point-de-controle DOSSIER")?;
+    let mut r = [0u8; 8];
+    let _ = getrandom::getrandom(&mut r);
+    let tmp = std::env::temp_dir().join(format!("numfranc-point-{}", hex(&r)));
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    let copie = tmp.join("blocks.dat");
+    let res = (|| {
+        std::fs::copy(&source, &copie).map_err(|e| format!("{} : {e}", source.display()))?;
+        let c = Chain::open(&copie).map_err(|e| e.to_string())?;
+        let haut = c.height();
+        if haut < 200 {
+            return Err(format!("chaîne trop courte ({haut} blocs) : il en faut au moins 200"));
+        }
+        let h = (haut - 100) / 100 * 100;
+        let hash = c.hash_at(h).ok_or("bloc introuvable")?;
+        Ok(format!(
+            "Chaîne lue : {} ({haut} blocs)\nPoint de contrôle proposé : bloc n°{h}\n\n    ({h}, \"{}\"),\n",
+            source.display(),
+            hex(&hash)
+        ))
+    })();
+    let _ = std::fs::remove_dir_all(&tmp);
+    res
+}
+
+const LECTURE_DISQUE: &str = "bloc introuvable sur le disque";
+
 impl Chain {
     pub fn new() -> Self {
         Self::with_genesis(genesis_block())
@@ -322,9 +394,19 @@ impl Chain {
             h,
             IndexEntry { header: g.header.clone(), height: 0, work: block_work(&g.header.target), invalid: false },
         );
+        let vraie = h == genesis_block().hash();
+        let min_work_reorg = if vraie {
+            block_work(&GENESIS_TARGET_BE) * BigUint::from(MIN_CHAIN_BLOCKS + 1)
+        } else {
+            BigUint::from(0u8)
+        };
+        let points = if vraie { CHECKPOINTS.iter().map(|(n, s)| (*n, s.to_string())).collect() } else { Vec::new() };
         let mut mem = HashMap::new();
         mem.insert(h, g);
         Self {
+            min_work_reorg,
+            points,
+            rejets: std::collections::HashSet::new(),
             index,
             mem,
             locs: HashMap::new(),
@@ -498,7 +580,7 @@ impl Chain {
         if hdr.version != PROTOCOL_VERSION {
             return Err("version de bloc inconnue".into());
         }
-        for (h, expected) in CHECKPOINTS {
+        for (h, expected) in &self.points {
             if *h == height && hex(&hash) != *expected {
                 return Err(format!("bloc contraire au point de contrôle {h}"));
             }
@@ -540,6 +622,10 @@ impl Chain {
         if v1 && block.txs.iter().any(|t| t.locktime != 0) {
             return Err("champ locktime non nul (réservé)".into());
         }
+        // Règles v1.3.0 : plus de pièces minuscules (hors récompense de minage).
+        if mtp >= V2_RULES_MTP && block.txs[1..].iter().any(|t| t.outputs.iter().any(|o| o.amount < DUST)) {
+            return Err("pièce de moins de 0,0001 NFR dans un bloc".into());
+        }
         let mut ids = HashSet::new();
         for t in &block.txs {
             if !ids.insert(t.txid()) {
@@ -576,6 +662,11 @@ impl Chain {
         if let Some(e) = self.index.get(&hash) {
             return Err(if e.invalid { ChainError::KnownBad("bloc déjà rejeté".into()) } else { ChainError::AlreadyKnown });
         }
+        // (Pas au rechargement de notre propre fichier : inutile, et ce serait lent au démarrage.)
+        let empreinte = if loc.is_none() { crate::hashing::sha3_512(&block.serialize()) } else { [0; 64] };
+        if loc.is_none() && self.rejets.contains(&empreinte) {
+            return Err(ChainError::KnownBad("bloc déjà rejeté".into()));
+        }
         let parent_hash = block.header.previous_block_hash;
         let (parent_height, parent_work) = match self.index.get(&parent_hash) {
             None => return Err(ChainError::Orphan),
@@ -583,26 +674,43 @@ impl Chain {
             Some(p) => (p.height, p.work.clone()),
         };
         let height = parent_height + 1;
+        // Points de contrôle : une fois notre chaîne au-delà du dernier, plus aucun embranchement avant lui
+        // (personne ne peut réécrire cette partie de l'histoire, même avec énormément de puissance de calcul).
+        if let Some(dernier) = self.points.iter().map(|p| p.0).max() {
+            if height <= dernier && self.height() >= dernier {
+                return Err(ChainError::KnownBad("embranchement avant le dernier point de contrôle".into()));
+            }
+        }
         // Comme Bitcoin, on n'enregistre pas un bloc d'une branche qui ne pourra jamais gagner :
         // si elle part de plus de MAX_REORG_DEPTH blocs en arrière, elle serait de toute façon refusée.
         // (Pas au rechargement de notre propre fichier : ces blocs y sont déjà.)
         if loc.is_none() && parent_hash != self.tip() {
+            let limite = self.limite_reorg();
             let mut h = parent_hash;
             let mut steps = 0u64;
             while !self.is_active(&h) {
+                // Un ancêtre déjà jugé invalide : toute la branche l'est.
+                if self.index[&h].invalid {
+                    return Err(ChainError::KnownBad("ancêtre invalide".into()));
+                }
                 steps += 1;
-                if steps > MAX_REORG_DEPTH + 1 {
+                if limite && steps > MAX_REORG_DEPTH + 1 {
                     return Err(ChainError::ReorgTooDeep { depth: steps });
                 }
                 h = self.index[&h].header.previous_block_hash;
             }
             let depth = self.height().saturating_sub(self.index[&h].height);
-            if depth > MAX_REORG_DEPTH {
+            if limite && depth > MAX_REORG_DEPTH {
                 return Err(ChainError::ReorgTooDeep { depth });
             }
         }
-        self.check_block(&block, &parent_hash, height, now, loc.is_some())
-            .map_err(|e| if e == FUTURE_TIME_MSG { ChainError::FutureTime } else { ChainError::Invalid(e) })?;
+        if let Err(e) = self.check_block(&block, &parent_hash, height, now, loc.is_some()) {
+            if e == FUTURE_TIME_MSG {
+                return Err(ChainError::FutureTime);
+            }
+            self.rejeter(empreinte);
+            return Err(ChainError::Invalid(e));
+        }
 
         let work = parent_work + block_work(&block.header.target);
         self.index.insert(hash, IndexEntry { header: block.header.clone(), height, work: work.clone(), invalid: false });
@@ -623,6 +731,7 @@ impl Chain {
                 }
                 Err(e) => {
                     self.index.get_mut(&hash).unwrap().invalid = true;
+                    self.rejeter(empreinte);
                     Err(ChainError::Invalid(e))
                 }
             }
@@ -631,6 +740,18 @@ impl Chain {
         } else {
             Ok(Added::SideChain)
         }
+    }
+
+    /// La limite de réorganisation s'applique-t-elle ? (Non pendant la synchronisation initiale.)
+    fn limite_reorg(&self) -> bool {
+        self.tip_work() >= &self.min_work_reorg
+    }
+
+    fn rejeter(&mut self, empreinte: [u8; 64]) {
+        if self.rejets.len() >= 10_000 {
+            self.rejets.clear();
+        }
+        self.rejets.insert(empreinte);
     }
 
     fn remember_undo(&mut self, hash: Hash, log: Vec<UndoOp>) {
@@ -675,7 +796,7 @@ impl Chain {
         }
         let fork_height = self.index[&h].height;
         let depth = self.height() - fork_height;
-        if depth > MAX_REORG_DEPTH {
+        if self.limite_reorg() && depth > MAX_REORG_DEPTH {
             return Err(ChainError::ReorgTooDeep { depth });
         }
         path.reverse();
@@ -700,7 +821,7 @@ impl Chain {
                     let mtp = self.median_time_past(&b.header.previous_block_hash);
                     connect_block(&mut self.utxo, &mut self.names, &b, height, mtp)
                 }
-                None => Err("bloc introuvable sur le disque".into()),
+                None => Err(LECTURE_DISQUE.into()),
             };
             match res {
                 Ok(log) => {
@@ -708,7 +829,10 @@ impl Chain {
                     self.remember_undo(*bh, log);
                 }
                 Err(e) => {
-                    self.index.get_mut(bh).unwrap().invalid = true;
+                    // Une erreur de lecture du disque ne rend pas le bloc invalide (il pourra être relu).
+                    if e != LECTURE_DISQUE {
+                        self.index.get_mut(bh).unwrap().invalid = true;
+                    }
                     // Retour à l'ancienne branche.
                     while self.height() > fork_height {
                         let b = self.active.pop().unwrap();
@@ -723,6 +847,10 @@ impl Chain {
                         let log = connect_block(&mut self.utxo, &mut self.names, &b, height, mtp).expect("l'ancienne branche était valide");
                         self.active.push(*ob);
                         self.remember_undo(*ob, log);
+                    }
+                    if e == LECTURE_DISQUE {
+                        // Pas la faute de celui qui a envoyé le bloc : on ne l'exclut pas.
+                        return Err(ChainError::AlreadyKnown);
                     }
                     return Err(ChainError::Invalid(e));
                 }
@@ -1171,6 +1299,58 @@ pub mod tests {
         b
     }
 
+    /// Règles v1.3.0 : l'annulation revient à l'expéditeur, frais de pseudo détruits.
+    #[test]
+    fn regles_v130_gardien_et_pseudos() {
+        let sender = KeyPair::from_seed(&[1; 32]);
+        let friend = KeyPair::from_seed(&[2; 32]);
+        let guardian = KeyPair::from_seed(&[4; 32]);
+        let mut c = mature(&sender);
+        let unlock = (V2_RULES_MTP + 1_000_000) as u32;
+        let total = c.block_at(1).unwrap().txs[0].outputs[0].amount;
+        let tx = spend_to(&c, &sender, 1, vec![TxOut::retained(total - 8_000, addr(&friend), unlock, addr(&guardian))]);
+        assert_eq!(mine_with(&mut c, vec![tx.clone()], addr(&sender)), Ok(Added::Extended));
+        let op = OutPoint { txid: tx.txid(), vout: 0 };
+        assert_eq!(c.utxo[&op].refund, Some(addr(&sender)));
+        let reclaim = |to: Address| {
+            let mut t = Transaction::new(
+                vec![TxIn::single(op, guardian.public_key_bytes().to_vec(), vec![0; crate::signature::SIGNATURE_SIZE])],
+                vec![TxOut::new(total - 20_000, to)],
+                Vec::new(),
+            );
+            t.inputs[0].signature = guardian.sign(&t.sighash()).unwrap().to_vec();
+            t
+        };
+        let h = c.height() + 1;
+        // Avant l'activation : le gardien peut encore envoyer ailleurs.
+        assert!(check_tx_inputs(&c.utxo, &reclaim(addr(&guardian)), h, c.next_mtp()).is_ok());
+        // Après : seulement vers l'expéditeur.
+        assert!(check_tx_inputs(&c.utxo, &reclaim(addr(&guardian)), h, V2_RULES_MTP).unwrap_err().contains("revenir"));
+        assert!(check_tx_inputs(&c.utxo, &reclaim(addr(&sender)), h, V2_RULES_MTP).is_ok());
+        // Frais de pseudo détruits seulement après l'activation.
+        let mut t = reclaim(addr(&sender));
+        t.name_op = Some(crate::tx::NameOp { kind: NameKind::Register, name: "abc".into(), owner: addr(&sender) });
+        assert_eq!(burned_fees(std::slice::from_ref(&t), V2_RULES_MTP - 1), 0);
+        assert_eq!(burned_fees(std::slice::from_ref(&t), V2_RULES_MTP), name_fee(3));
+    }
+
+    /// Points de contrôle : bloc contraire refusé, et plus d'embranchement avant le dernier.
+    #[test]
+    fn points_de_controle() {
+        let kp = KeyPair::from_seed(&[5; 32]);
+        let mut c = chain_with(5, &kp);
+        let h3 = c.hash_at(3).unwrap();
+        c.points = vec![(3, hex(&h3))];
+        // Embranchement à la hauteur 2 (avant le point de contrôle) : refusé sans même être vérifié.
+        let b = make_block(&c, c.hash_at(1).unwrap(), vec![], addr(&kp), 999, b"fourche");
+        assert!(matches!(c.add_block(b, now()), Err(ChainError::KnownBad(e)) if e.contains("point de contrôle")));
+        // Une chaîne neuve avec un autre bloc n°3 que celui du point de contrôle : refusé.
+        let mut d = chain_with(2, &kp);
+        d.points = vec![(3, hex(&h3))];
+        let b = make_block(&d, d.tip(), vec![], addr(&kp), 999, b"autre");
+        assert!(matches!(d.add_block(b, now()), Err(ChainError::Invalid(e)) if e.contains("point de contrôle")));
+    }
+
     #[test]
     fn paiement_retenu_annulable_puis_definitif() {
         let sender = KeyPair::from_seed(&[1; 32]);
@@ -1447,6 +1627,27 @@ mod tests_audit {
         tx.locktime = 1;
         let mut mp = crate::mempool::Mempool::default();
         assert!(mp.accept(tx, &c).unwrap_err().contains("locktime"));
+    }
+
+    /// Règles v1.3.0 : pas de pièce minuscule dans un bloc après l'activation.
+    #[test]
+    fn poussiere_refusee_dans_les_blocs() {
+        let kp = KeyPair::from_seed(&[6; 32]);
+        let mut c = Chain::with_genesis(test_genesis());
+        while c.next_mtp() < V2_RULES_MTP {
+            let b = make_block(&c, c.tip(), vec![], addr(&kp), 300_000, b"");
+            c.add_block(b, u64::MAX / 4).unwrap();
+        }
+        let mut tx = Transaction::new(
+            vec![TxIn::single(OutPoint { txid: [7; 64], vout: 0 }, kp.public_key_bytes().to_vec(), vec![1; crate::signature::SIGNATURE_SIZE])],
+            vec![TxOut::new(DUST - 1, [1; 32])],
+            Vec::new(),
+        );
+        tx.inputs[0].signature = kp.sign(&tx.sighash()).unwrap().to_vec();
+        let mut b = make_block(&c, c.tip(), vec![tx], addr(&kp), 691, b"p");
+        b.header.merkle_root = b.compute_merkle_root();
+        assert!(crate::block::mine(&mut b.header, u64::MAX));
+        assert!(matches!(c.add_block(b, u64::MAX / 4), Err(ChainError::Invalid(e)) if e.contains("0,0001")));
     }
 
     /// E1 : la réponse à une demande de blocs est une liste légère de hashes, limitée en nombre.

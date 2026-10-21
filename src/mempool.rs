@@ -114,6 +114,9 @@ impl Mempool {
                 return Err("entrée inexistante".into());
             }
         }
+        if tx.outputs.iter().any(|o| o.amount < crate::config::DUST) {
+            return Err("montant trop petit (moins de 0,0001 NFR) : non relayé".into());
+        }
         let fee = check_tx_inputs(&chain.utxo, tx, chain.height() + 1, chain.next_mtp())?;
         check_name_op(&chain.names, tx, fee)?;
         if let Some(n) = &tx.name_op {

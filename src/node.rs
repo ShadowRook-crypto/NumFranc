@@ -38,6 +38,10 @@ struct Peer {
     label: String,
     outbound: bool,
     writer: Arc<Mutex<TcpStream>>,
+    /// Copie de la connexion, hors du verrou d'écriture : la couper ne doit jamais attendre un envoi lent.
+    ctl: TcpStream,
+    /// Message Version déjà reçu (une seule fois par connexion ; rien d'autre n'est traité avant).
+    version_ok: bool,
     /// Hauteur PROUVÉE : celle du meilleur bloc valide que ce pair nous a livré.
     height: u64,
     /// Hauteur ANNONCÉE (Version, Tip) : sert seulement à savoir s'il faut lui demander des blocs.
@@ -63,12 +67,14 @@ struct Peer {
 }
 
 impl Peer {
-    fn new(addr: SocketAddr, label: String, outbound: bool, writer: Arc<Mutex<TcpStream>>) -> Self {
+    fn new(addr: SocketAddr, label: String, outbound: bool, writer: Arc<Mutex<TcpStream>>, ctl: TcpStream) -> Self {
         Peer {
             addr,
             label,
             outbound,
             writer,
+            ctl,
+            version_ok: false,
             height: 0,
             claimed: 0,
             last_valid: None,
@@ -116,6 +122,8 @@ pub struct Node {
     addrman: Mutex<AddrMan>,
     addrman_saved: Mutex<Instant>,
     attempts: Mutex<HashMap<String, Instant>>,
+    /// Connexions sortantes en cours d'établissement (lancées par connect_loop).
+    connecting: AtomicUsize,
     banned: Mutex<HashMap<IpAddr, Instant>>,
     tip_version: AtomicU64,
     pub hashes: AtomicU64,
@@ -126,6 +134,8 @@ pub struct Node {
     pub hashrate: AtomicU64,
     pub mining: AtomicBool,
     nonce: u64,
+    /// Identifiant des annonces sur le réseau local (différent de `nonce`).
+    disc_id: u64,
     pub opts: Options,
     last_log: Mutex<Instant>,
     started: Instant,
@@ -254,10 +264,22 @@ fn log(msg: &str) {
     crate::events::log(msg);
 }
 
+/// Clé d'exclusion : l'adresse IPv4 entière, ou le bloc /64 en IPv6 (un abonné en a des milliards).
+fn ban_key(ip: &IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(_) => *ip,
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
+        }
+    }
+}
+
 impl Node {
     /// Démarre le nœud avec un portefeuille déjà ouvert (voir wallet.rs).
     pub fn start(opts: Options, wallet: Wallet) -> Result<Arc<Self>, String> {
         std::fs::create_dir_all(&opts.data_dir).map_err(|e| format!("dossier de données : {e}"))?;
+        crate::install::dossier_prive(&opts.data_dir);
         crate::install::single_instance(&opts.data_dir)?;
         log(crate::i18n::t("Chargement de la chaîne...", "Loading the chain..."));
         let chain = Chain::open(&opts.data_dir.join("blocks.dat")).map_err(|e| e.to_string())?;
@@ -273,6 +295,7 @@ impl Node {
             addrman: Mutex::new(addrman),
             addrman_saved: Mutex::new(Instant::now()),
             attempts: Mutex::new(HashMap::new()),
+            connecting: AtomicUsize::new(0),
             banned: Mutex::new(HashMap::new()),
             tip_version: AtomicU64::new(0),
             hashes: AtomicU64::new(0),
@@ -281,6 +304,11 @@ impl Node {
             threads: AtomicUsize::new(opts.threads.max(1)),
             blocked_unknown: AtomicU64::new(0),
             nonce: u64::from_be_bytes(nonce_bytes),
+            disc_id: {
+                let mut d = [0u8; 8];
+                let _ = getrandom::getrandom(&mut d);
+                u64::from_be_bytes(d)
+            },
             opts: opts.clone(),
             last_log: Mutex::new(Instant::now() - Duration::from_secs(60)),
             started: Instant::now(),
@@ -325,7 +353,7 @@ impl Node {
     fn is_banned(&self, ip: &IpAddr) -> bool {
         let mut b = self.banned.lock().unwrap();
         b.retain(|_, until| *until > Instant::now());
-        b.contains_key(ip)
+        b.contains_key(&ban_key(ip))
     }
 
     fn ban(&self, id: u64, reason: &str) {
@@ -338,16 +366,26 @@ impl Node {
                 // Connexion inconnue (robots qui sondent Internet) : bloquée sans bruit.
                 self.blocked_unknown.fetch_add(1, Ordering::Relaxed);
             }
-            self.banned.lock().unwrap().insert(p.addr.ip(), Instant::now() + Duration::from_secs(86_400));
-            let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
+            // Une adresse du réseau local (box, autre PC de la maison) n'est jamais exclue : on coupe seulement.
+            if !is_local_ip(&p.addr.ip()) {
+                let mut b = self.banned.lock().unwrap();
+                if b.len() >= 10_000 {
+                    b.retain(|_, until| *until > Instant::now());
+                }
+                if b.len() < 10_000 {
+                    b.insert(ban_key(&p.addr.ip()), Instant::now() + Duration::from_secs(86_400));
+                }
+            }
+            let _ = p.ctl.shutdown(std::net::Shutdown::Both);
         }
     }
 
     /// Coupe la connexion avec un pair (sans l'exclure 24 h).
     fn disconnect(&self, id: u64, reason: &str) {
-        if let Some(p) = self.peers.lock().unwrap().remove(&id) {
+        let peer = self.peers.lock().unwrap().remove(&id);
+        if let Some(p) = peer {
             log(&crate::tf!("[i] Pair {} déconnecté : {reason}", "[i] Peer {} disconnected: {reason}", p.addr));
-            let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
+            let _ = p.ctl.shutdown(std::net::Shutdown::Both);
         }
     }
 
@@ -412,6 +450,10 @@ impl Node {
                     if connected.contains(&c) || connected.iter().any(|l| l.starts_with(&format!("{c}:"))) {
                         continue;
                     }
+                    // Tentatives encore en cours comptées : pas plus de MAX_OUTBOUND à la fois.
+                    if outbound + self.connecting.load(Ordering::SeqCst) >= MAX_OUTBOUND {
+                        break;
+                    }
                     {
                         let mut a = self.attempts.lock().unwrap();
                         if a.get(&c).is_some_and(|t| t.elapsed() < Duration::from_secs(60)) {
@@ -419,42 +461,63 @@ impl Node {
                         }
                         a.insert(c.clone(), Instant::now());
                     }
+                    self.connecting.fetch_add(1, Ordering::SeqCst);
                     let n = self.clone();
-                    std::thread::spawn(move || n.connect_to(c));
+                    std::thread::spawn(move || n.connect_counted(c, true));
                 }
             }
+            // Oublie les vieilles tentatives (la liste ne grossit pas sans fin).
+            self.attempts.lock().unwrap().retain(|_, t| t.elapsed() < Duration::from_secs(600));
             self.save_addrman(false);
             std::thread::sleep(Duration::from_secs(5));
         }
     }
 
     pub fn connect_to(self: Arc<Self>, target: String) {
+        self.connect_counted(target, false);
+    }
+
+    /// `counted` : tentative lancée par connect_loop, comptée dans `connecting` jusqu'à la fin de la
+    /// connexion TCP (réussie ou non) ; ensuite elle est comptée comme pair sortant.
+    fn connect_counted(self: Arc<Self>, target: String, counted: bool) {
+        let done = |n: &Self| {
+            if counted {
+                let _ = n.connecting.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| v.checked_sub(1));
+            }
+        };
+        match self.open_stream(&target) {
+            Some((stream, label)) => {
+                done(&self);
+                self.handle(stream, label, true);
+            }
+            None => done(&self),
+        }
+    }
+
+    /// Ouvre la connexion TCP vers `target` (« hôte:port », ou nœud d'amorçage sans port).
+    fn open_stream(&self, target: &str) -> Option<(TcpStream, String)> {
         // Nœud d'amorçage écrit sans port (ex. « monnoeud.example ») : on essaie les ports habituels.
         if !target.contains(':') {
-            let Some(ip) = (target.as_str(), 0).to_socket_addrs().ok().and_then(|mut a| a.next()).map(|a| a.ip()) else { return };
+            let ip = (target, 0).to_socket_addrs().ok()?.next()?.ip();
             // C'est notre propre adresse publique (on est chez le nœud d'amorçage) : inutile de se joindre soi-même.
             if self.is_reachable() && *self.public_ip.lock().unwrap() == Some(ip) {
-                return;
+                return None;
+            }
+            if self.is_banned(&ip) {
+                return None;
             }
             for port in SEED_PORTS {
-                let addr = SocketAddr::new(ip, port);
-                if self.is_banned(&ip) {
-                    return;
-                }
-                if let Ok(stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
-                    self.handle(stream, format!("{target}:{port}"), true);
-                    return;
+                if let Ok(stream) = TcpStream::connect_timeout(&SocketAddr::new(ip, port), Duration::from_secs(4)) {
+                    return Some((stream, format!("{target}:{port}")));
                 }
             }
-            return;
+            return None;
         }
-        let Some(addr) = target.to_socket_addrs().ok().and_then(|mut a| a.next()) else { return };
+        let addr = target.to_socket_addrs().ok()?.next()?;
         if self.is_banned(&addr.ip()) {
-            return;
+            return None;
         }
-        if let Ok(stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(5)) {
-            self.handle(stream, target, true);
-        }
+        TcpStream::connect_timeout(&addr, Duration::from_secs(5)).ok().map(|s| (s, target.to_string()))
     }
 
     fn handle(self: Arc<Self>, stream: TcpStream, label: String, outbound: bool) {
@@ -463,22 +526,41 @@ impl Node {
         let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
         let _ = stream.set_read_timeout(Some(Duration::from_secs(600)));
         let Ok(writer) = stream.try_clone() else { return };
+        let Ok(ctl) = stream.try_clone() else { return };
+        // Poignée de main : le pair a 30 s pour envoyer son message Version (sinon la place est libérée).
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
         let id = self.next_peer.fetch_add(1, Ordering::SeqCst);
         let writer = Arc::new(Mutex::new(writer));
-        self.peers.lock().unwrap().insert(id, Peer::new(addr, label, outbound, writer));
+        self.peers.lock().unwrap().insert(id, Peer::new(addr, label, outbound, writer, ctl));
         let height = self.chain.lock().unwrap().height();
         let listen_port = self.public_port.load(Ordering::SeqCst);
         self.send(id, &Message::Version { version: PROTOCOL_VERSION, height, listen_port, nonce: self.nonce });
 
         let mut reader = std::io::BufReader::new(stream);
+        let mut long_timeout = false;
+        let debut = std::time::Instant::now();
         loop {
             match read_message(&mut reader) {
                 Ok(Ok(msg)) => {
-                    if !self.peers.lock().unwrap().contains_key(&id) {
-                        break;
+                    let handshake = match self.peers.lock().unwrap().get(&id) {
+                        None => break,
+                        Some(p) => p.version_ok,
+                    };
+                    // Avant la poignée de main, seul Version est accepté, et au plus 30 s en tout.
+                    if !handshake && !matches!(msg, Message::Version { .. }) {
+                        if debut.elapsed() > Duration::from_secs(30) {
+                            break;
+                        }
+                        continue;
                     }
                     self.process(id, msg);
+                    if !long_timeout && self.peers.lock().unwrap().get(&id).is_some_and(|p| p.version_ok) {
+                        long_timeout = true;
+                        let _ = reader.get_ref().set_read_timeout(Some(Duration::from_secs(600)));
+                    }
                 }
+                // Message d'une version plus récente du protocole : ignoré (comme Bitcoin), sans exclure le pair.
+                Ok(Err(e)) if e.starts_with(crate::p2p::UNKNOWN_COMMAND) => continue,
                 Ok(Err(e)) => {
                     self.ban(id, &format!("message invalide : {e}"));
                     break;
@@ -513,12 +595,34 @@ impl Node {
             }
             return;
         }
+        // Au plus 256 envois en cours à la fois : des pairs lents ne peuvent pas faire exploser le nombre de fils.
+        // Au-delà, une transaction n'est pas relayée à ce pair (les autres la relaieront) ; un bloc attend son tour.
+        static EN_COURS: AtomicUsize = AtomicUsize::new(0);
+        let est_bloc = matches!(msg, Message::Block(_));
         let msg = Arc::new(msg.clone());
         for w in writers {
+            if EN_COURS.load(Ordering::SeqCst) >= 256 {
+                if est_bloc {
+                    let _ = write_message(&mut *w.lock().unwrap(), &msg);
+                }
+                continue;
+            }
+            EN_COURS.fetch_add(1, Ordering::SeqCst);
             let msg = msg.clone();
-            let _ = std::thread::Builder::new().name("diffusion".into()).spawn(move || {
-                let _ = write_message(&mut *w.lock().unwrap(), &msg);
+            let r = std::thread::Builder::new().name("diffusion".into()).spawn(move || {
+                // Décompte garanti, même si l'envoi plante.
+                struct Fin;
+                impl Drop for Fin {
+                    fn drop(&mut self) {
+                        EN_COURS.fetch_sub(1, Ordering::SeqCst);
+                    }
+                }
+                let _fin = Fin;
+                let _ = write_message(&mut *w.lock().unwrap_or_else(|e| e.into_inner()), &msg);
             });
+            if r.is_err() {
+                EN_COURS.fetch_sub(1, Ordering::SeqCst);
+            }
         }
     }
 
@@ -536,9 +640,15 @@ impl Node {
     fn process(&self, id: u64, msg: Message) {
         match msg {
             Message::Version { version, height, listen_port, nonce } => {
+                // Un seul message Version par connexion.
+                if self.peers.lock().unwrap().get(&id).is_some_and(|p| p.version_ok) {
+                    self.disconnect(id, "message Version répété");
+                    return;
+                }
                 if nonce == self.nonce || version != PROTOCOL_VERSION {
-                    if let Some(p) = self.peers.lock().unwrap().remove(&id) {
-                        let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
+                    let removed = self.peers.lock().unwrap().remove(&id);
+                    if let Some(p) = removed {
+                        let _ = p.ctl.shutdown(std::net::Shutdown::Both);
                         if nonce == self.nonce && p.outbound {
                             // Connexion à nous-mêmes : on oublie cette adresse.
                             if let Ok(a) = p.label.parse::<SocketAddr>() {
@@ -561,7 +671,7 @@ impl Node {
                         *pid != id && p.remote_nonce == nonce && (Some(p.addr.ip()) == ip || (chez_nous(&p.addr.ip()) && ip.as_ref().is_some_and(chez_nous)))
                     }) {
                         if let Some(p) = peers.remove(&id) {
-                            let _ = p.writer.lock().unwrap().shutdown(std::net::Shutdown::Both);
+                            let _ = p.ctl.shutdown(std::net::Shutdown::Both);
                         }
                         return;
                     }
@@ -570,6 +680,7 @@ impl Node {
                     }
                 }
                 if let Some(p) = self.peers.lock().unwrap().get_mut(&id) {
+                    p.version_ok = true;
                     p.claimed = height;
                     // Notre demande GetAddr ci-dessous autorise une réponse de 1 000 adresses.
                     p.addr_tokens += 1_000.0;
@@ -881,7 +992,12 @@ impl Node {
 
     pub fn submit_tx(&self, tx: Transaction) -> Result<(), String> {
         // Faille connue dans cette version (signalée dans la liste signée) : on protège les fonds.
-        if crate::maj::version_dangereuse() {
+        // Seuls les envois vers d'autres sont bloqués : une annulation ou un regroupement chez soi reste possible.
+        let tout_chez_moi = {
+            let w = self.wallet.lock().unwrap();
+            tx.outputs.iter().all(|o| w.is_mine(&o.address))
+        };
+        if crate::maj::version_dangereuse() && !tout_chez_moi {
             return Err(crate::i18n::t(
                 "envoi bloqué : cette version a une faille de sécurité connue. Installe la mise à jour (Réglages > Mises à jour), puis réessaie.",
                 "sending blocked: this version has a known security flaw. Install the update (Settings > Updates), then try again.",
@@ -917,6 +1033,7 @@ impl Node {
         let tip = c.tip();
         let height = c.height() + 1;
         let (txs, fees) = self.mempool.lock().unwrap().select(MAX_BLOCK_SIZE - 64 * 1024);
+        let fees = fees.saturating_sub(crate::chain::burned_fees(&txs, c.median_time_past(&tip)));
         let reward = block_reward(height, total_before(height)) + fees;
         let mut extra = [0u8; 8];
         let _ = getrandom::getrandom(&mut extra);
@@ -1000,7 +1117,8 @@ impl Node {
         p.extend_from_slice(b"NFRHELLO");
         p.extend_from_slice(&GENESIS_HASH_PREFIX);
         p.extend_from_slice(&self.opts.port.to_be_bytes());
-        p.extend_from_slice(&self.nonce.to_be_bytes());
+        // Identifiant de découverte tiré au hasard, distinct du « nonce » du protocole (qui reste privé).
+        p.extend_from_slice(&self.disc_id.to_be_bytes());
         p
     }
 
@@ -1023,7 +1141,8 @@ impl Node {
             }
             let port = u16::from_be_bytes([p[20], p[21]]);
             let nonce = u64::from_be_bytes(p[22..30].try_into().unwrap());
-            if nonce == self.nonce || self.is_banned(&src.ip()) {
+            // Seulement depuis le réseau local : un paquet venu d'Internet ne peut pas nous envoyer se connecter ailleurs.
+            if nonce == self.disc_id || !is_local_ip(&src.ip()) || port == 0 || self.is_banned(&src.ip()) {
                 continue;
             }
             let target = SocketAddr::new(src.ip(), port).to_string();

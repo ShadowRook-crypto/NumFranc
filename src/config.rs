@@ -108,6 +108,15 @@ pub const MAX_BLOCKS_PER_REPLY: usize = 500;
 /// le réseau s'organise tout seul (annuaire, échanges d'adresses). Sans port, les ports de SEED_PORTS sont
 /// essayés dans l'ordre (ce sont ceux que NumFranc demande aux box, voir node.rs).
 pub const DEFAULT_SEEDS: &[&str] = &[];
+/// Travail minimal de la vraie chaîne (en nombre de blocs à la difficulté de départ), inscrit dans chaque
+/// version signée, comme le « minimum chain work » de Bitcoin. Tant que notre chaîne a moins de travail
+/// (nouvel ordinateur en cours de synchronisation), la limite de réorganisation ne s'applique pas : un
+/// attaquant ne peut pas « capturer » un nouveau venu avec quelques blocs minés en avance.
+pub const MIN_CHAIN_BLOCKS: u64 = 200;
+/// « Poussière » : les nœuds ne relaient pas un paiement qui crée une pièce de moins de 0,0001 NFR
+/// (règle de relais, pas de consensus) : remplir la mémoire de tous les nœuds avec des millions de
+/// pièces minuscules coûterait sinon presque rien.
+pub const DUST: u64 = 10_000;
 /// Ports essayés pour un nœud d'amorçage écrit sans port.
 pub const SEED_PORTS: [u16; 6] = [6910, 16910, 26910, 36910, 46910, 56910];
 /// RPC (pour une future passerelle d'échange) : uniquement en local.
@@ -119,6 +128,15 @@ pub const RPC_ADDR: &str = "127.0.0.1:6911";
 /// déjà acceptés par tout le monde, restent valides tels quels.
 /// Règles concernées : anti « time warp » (BIP94) et `locktime` obligatoirement à 0.
 pub const V1_RULES_MTP: u64 = 1_792_368_000;
+/// --- Règles ajoutées en v1.3.0 ---
+/// Date d'activation (9 novembre 2026, 00:00 UTC), comparée au temps médian (MTP) du bloc parent,
+/// au moins 2 semaines après la sortie de la v1.3.0 pour que tous les ordinateurs aient été mis à jour.
+/// Règles concernées :
+///   1. plus aucune pièce de moins de DUST (0,0001 NFR) dans un bloc (hors récompense de minage) ;
+///   2. un paiement retenu annulé revient FORCÉMENT à celui qui l'avait envoyé (le gardien ne peut plus
+///      l'envoyer ailleurs) ;
+///   3. les frais d'enregistrement d'un pseudo sont détruits (le mineur ne les reçoit plus).
+pub const V2_RULES_MTP: u64 = 1_794_182_400;
 /// Anti « time warp » (comme le BIP94 de Bitcoin) : le premier bloc d'une fenêtre de difficulté
 /// ne peut pas être daté plus de 2 heures avant le bloc précédent.
 pub const MAX_TIMEWARP: u64 = 7_200;
@@ -127,8 +145,8 @@ pub const MAX_TIMEWARP: u64 = 7_200;
 /// Un mineur peut toujours inclure une transaction plus grande (jusqu'à MAX_TX_SIZE) dans son propre bloc.
 pub const MAX_RELAY_TX_SIZE: usize = 2 * 1024 * 1024;
 /// Volume maximal de blocs envoyés en réponse à une seule demande (comme Bitcoin, on envoie
-/// les blocs un par un et on s'arrête à une limite) : 32 Mio.
-pub const MAX_BYTES_PER_REPLY: usize = 32 * 1024 * 1024;
+/// les blocs un par un et on s'arrête à une limite) : 8 Mio (limite l'envoi qu'un pair peut réclamer).
+pub const MAX_BYTES_PER_REPLY: usize = 8 * 1024 * 1024;
 /// Un pair n'est « en avance » (et ne suspend notre minage) que s'il nous a livré un bloc valide
 /// depuis moins de ce délai, en secondes. Une simple annonce de hauteur ne suffit plus.
 pub const PROVEN_PEER_SECS: u64 = 120;

@@ -245,6 +245,8 @@ enum EtatMaj {
 
 /// Un tour de mise à jour automatique : vérifier, puis télécharger et vérifier l'installeur.
 fn maj_tour(dir: &std::path::Path, etat: &Arc<std::sync::Mutex<EtatMaj>>) {
+    // Une seule vérification à la fois (bouton « Vérifier » et vérification automatique).
+    let Ok(_verrou) = crate::maj::VERROU_MAJ.try_lock() else { return };
     let Ok(info) = crate::maj::verifier_tout(dir) else { return };
     if !info.nouvelle {
         *etat.lock().unwrap() = EtatMaj::Rien;
@@ -590,6 +592,14 @@ impl App {
                 // Adresse de réception (publique) pour le nœud d'arrière-plan.
                 let adresse = node.wallet.lock().unwrap().main_address().map(|a| crate::wallet::address_to_string(&a)).unwrap_or_default();
                 if !adresse.is_empty() && self.settings.reward_address != adresse {
+                    // Adresse de minage d'arrière-plan différente de la tienne : on prévient (un programme
+                    // malveillant aurait pu la changer pour détourner tes récompenses), puis on la remet.
+                    if !self.settings.reward_address.is_empty() {
+                        events::log(t(
+                            "[!] L'adresse de minage en arrière-plan n'était pas la tienne : elle a été remise. Si tu ne l'as pas changée toi-même, fais vérifier cet ordinateur.",
+                            "[!] The background mining address was not yours: it has been reset. If you did not change it yourself, have this computer checked.",
+                        ));
+                    }
                     self.settings.reward_address = adresse;
                     self.settings.save(&self.opts.data_dir);
                 }
@@ -1740,7 +1750,12 @@ impl App {
                 HistoryKind::Sent => t("Envoyé", "Sent"),
                 HistoryKind::Vault => t("Coffre", "Vault"),
             };
-            let memo = it.memo.replace('"', "\"\"");
+            // Un message qui commence par = + - @ serait lu comme une formule par Excel ou LibreOffice :
+            // on le neutralise avec une apostrophe devant.
+            let mut memo = it.memo.replace('"', "\"\"");
+            if memo.starts_with(['=', '+', '-', '@', '\t', '\r', '＝', '＋', '－', '＠']) {
+                memo.insert(0, '\'');
+            }
             let lock = if it.lock_until > 0 { describe_lock(it.lock_until) } else { String::new() };
             out += &format!("{};{};{};{};\"{}\";{}\n", local_time(*ts), it.height, kind, csv_amount(it.amount), memo, lock);
         }

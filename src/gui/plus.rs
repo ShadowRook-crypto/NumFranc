@@ -623,21 +623,26 @@ impl App {
                 ui.add(egui::TextEdit::singleline(&mut self.plus.prot_guardian).desired_width(420.0).hint_text("NFR1-…"));
             });
             ui.label(RichText::new(t("Un gardien peut annuler à ta place, mais pas toi : utile si tu crains d'être forcé ou piraté.", "A guardian can cancel instead of you, and you cannot: useful if you fear coercion or hacking.")).color(p.grey));
+            ui.label(RichText::new(t(
+                "Un paiement annulé par le gardien te revient toujours (règle du réseau à partir du 9 novembre 2026 ; avant cette date, le gardien peut l'envoyer ailleurs). Le code de dépense ci-dessus est demandé pour changer ces réglages.",
+                "A payment cancelled by the guardian always comes back to you (network rule from 9 November 2026; before that date, the guardian can send it elsewhere). The spending code above is required to change these settings.",
+            ))
+            .color(p.orange));
             ui.horizontal(|ui| {
-                if ui.add_enabled(!busy, egui::Button::new(t("Enregistrer", "Save"))).clicked() {
+                if ui.add_enabled(!busy && !self.plus.code.is_empty(), egui::Button::new(t("Enregistrer", "Save"))).clicked() {
                     let r = (|| {
                         let th = parse_amount(&self.plus.prot_threshold)?;
                         let d = parse_lock_duration(&self.plus.prot_delay)?;
                         let g = if self.plus.prot_guardian.trim().is_empty() { None } else { Some(crate::wallet::parse_address(&self.plus.prot_guardian)?) };
-                        node.wallet.lock().unwrap().set_protection(Some(Protection { threshold: th, delay_secs: d, guardian: g }))
+                        node.wallet.lock().unwrap().set_protection(Some(Protection { threshold: th, delay_secs: d, guardian: g }), Some(&self.plus.code))
                     })();
                     match r {
                         Ok(()) => self.info = Some(t("Protection enregistrée.", "Protection saved.").into()),
                         Err(e) => self.error = Some(e),
                     }
                 }
-                if protection.is_some() && ui.button(t("Désactiver", "Disable")).clicked() {
-                    match node.wallet.lock().unwrap().set_protection(None) {
+                if protection.is_some() && ui.add_enabled(!busy && !self.plus.code.is_empty(), egui::Button::new(t("Désactiver", "Disable"))).clicked() {
+                    match node.wallet.lock().unwrap().set_protection(None, Some(&self.plus.code)) {
                         Ok(()) => {
                             self.info = Some(t("Protection désactivée.", "Protection disabled.").into());
                             self.plus.prot_loaded = false;

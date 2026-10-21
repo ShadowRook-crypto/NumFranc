@@ -230,6 +230,10 @@ pub fn natpmp_ouvrir(
     req[8..12].copy_from_slice(&duree_s.to_be_bytes());
     let rep = requete(&sock, &req, 16)?;
     controle(&rep, 130)?;
+    // La réponse doit parler de NOTRE port interne (sinon ce n'est pas la réponse à notre demande).
+    if u16::from_be_bytes([rep[8], rep[9]]) != interne {
+        return Err("réponse invalide".to_string());
+    }
     let obtenu = u16::from_be_bytes([rep[10], rep[11]]);
     if obtenu == 0 {
         return Err("port refusé".to_string());

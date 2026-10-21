@@ -111,7 +111,7 @@ pub fn parse_payment_uri(s: &str) -> Result<PaymentRequest, String> {
         Some((r, q)) => (r, q),
         None => (rest, ""),
     };
-    if recipient.is_empty() || recipient.len() > 200 || recipient.contains(char::is_whitespace) {
+    if recipient.is_empty() || recipient.len() > 200 || recipient.contains(char::is_whitespace) || recipient.chars().any(char::is_control) {
         return Err("destinataire absent ou invalide dans le lien".into());
     }
     let (mut amount, mut message) = (None, String::new());
@@ -120,7 +120,8 @@ pub fn parse_payment_uri(s: &str) -> Result<PaymentRequest, String> {
         match k {
             "amount" => amount = Some(parse_amount(v)?),
             "message" => {
-                message = pct_decode(v)?;
+                // Caractères de contrôle et d'inversion de texte retirés (le message serait gravé dans la chaîne).
+                message = crate::tx::clean_text(&pct_decode(v)?);
                 if message.len() > MAX_MEMO {
                     return Err(format!("message trop long ({} octets sur {MAX_MEMO})", message.len()));
                 }
@@ -195,7 +196,16 @@ pub fn verify_reserve(text: &str, chain: &Chain, expected_challenge: Option<&str
             return Err(format!("le mot de la preuve (« {challenge} ») n'est pas celui attendu (« {c} »)"));
         }
     }
-    let proven: u64 = chain.utxo.values().filter(|u| addresses.contains(&u.address)).map(|u| u.amount).sum();
+    // Seuls les fonds vraiment disponibles comptent : pas les récompenses pas encore mûres, pas les fonds
+    // verrouillés, ni ceux qu'une autre personne peut encore reprendre (paiement retenu).
+    let (next, mtp) = (chain.height() + 1, chain.next_mtp());
+    let proven: u64 = chain
+        .utxo
+        .values()
+        .filter(|u| addresses.contains(&u.address))
+        .filter(|u| !(u.coinbase && next < u.height + COINBASE_MATURITY) && is_unlocked(u.lock_until, next, mtp))
+        .map(|u| u.amount)
+        .sum();
     if proven < claimed {
         return Err("les fonds ne sont plus tous sur ces adresses".into());
     }
@@ -276,7 +286,8 @@ impl Wallet {
         let name_bytes = spec.name_op.as_ref().map(|n| 3 + n.name.len() + 32).unwrap_or(0);
         let outs_size = (spec.outputs.len() + 1) * 77;
         let size_for = move |n_in: usize| 10 + n_in * 7_288 + outs_size + 1 + memo_len + 1 + name_bytes + 8;
-        let need_change = u64::from(spec.outputs.is_empty());
+        // Sans destinataire (pseudo seul), la monnaie rendue est la seule sortie : au moins la « poussière ».
+        let need_change = if spec.outputs.is_empty() { crate::config::DUST } else { 0 };
         let mut chosen: Vec<(Address, OutPoint, u64)> = Vec::new();
         let mut total = 0u64;
         let mut fee = min_fee(size_for(1)) + spec.extra_fee;
@@ -319,10 +330,34 @@ impl Wallet {
 
         // Déchiffre la graine (et vérifie le code de dépense) AVANT de toucher à quoi que ce soit.
         let seed = self.seed_with(spend_code)?;
+        // Réglages de protection modifiés sans le code de dépense (sceau faux) : on ne signe rien.
+        if let Some(p) = &self.protection {
+            if spec.outputs.iter().any(|o| o.cancel.is_some()) && crate::wallet::protection_tag(&seed, p) != self.protection_tag {
+                return Err(crate::i18n::t(
+                    "les réglages de protection ont été modifiés sans ton code de dépense : vérifie-les et enregistre-les à nouveau (onglet Avancé) avant d'envoyer",
+                    "the protection settings were changed without your spending code: check them and save them again (Advanced tab) before sending",
+                )
+                .into());
+            }
+        }
         let change = total - amount - fee;
+        if spec.outputs.iter().any(|o| o.amount < crate::config::DUST) {
+            return Err(crate::i18n::t("montant trop petit : au moins 0,0001 NFR", "amount too small: at least 0.0001 NFR").into());
+        }
         let mut outputs = spec.outputs;
-        if change > 0 {
+        // Une monnaie rendue plus petite que la « poussière » est laissée en frais (elle ne serait pas relayée).
+        if change >= crate::config::DUST {
             let c = self.new_key();
+            // Les adresses du portefeuille doivent venir de la graine : un fichier modifié par quelqu'un qui
+            // n'a que le mot de passe d'ouverture ne peut pas envoyer la monnaie rendue chez lui.
+            let i = self.by_addr.get(&c).copied().ok_or("adresse inconnue")?;
+            if crate::wallet::address_of(&derive(&seed, i as u32)) != c || crate::wallet::address_of(&derive(&seed, 0)) != self.keys[0].0 {
+                return Err(crate::i18n::t(
+                    "les adresses de ce portefeuille ne correspondent pas à sa graine (fichier modifié ?) : restaure-le avec tes morceaux de secours",
+                    "this wallet's addresses do not match its seed (modified file?): restore it with your recovery pieces",
+                )
+                .into());
+            }
             outputs.push(TxOut::new(change, c));
         }
         let mut tx = Transaction::new(Vec::new(), outputs, spec.memo);
@@ -406,7 +441,9 @@ impl Wallet {
         self.protection.as_ref()
     }
 
-    pub fn set_protection(&mut self, p: Option<Protection>) -> Result<(), String> {
+    /// Change la protection des gros paiements. Le code de dépense est obligatoire : sinon, quelqu'un
+    /// qui n'aurait que le mot de passe d'ouverture pourrait se déclarer « gardien » et détourner les paiements.
+    pub fn set_protection(&mut self, p: Option<Protection>, spend_code: Option<&str>) -> Result<(), String> {
         if let Some(p) = &p {
             if p.threshold == 0 {
                 return Err(crate::i18n::t("le seuil doit être positif", "the threshold must be positive").into());
@@ -415,6 +452,11 @@ impl Wallet {
                 return Err(crate::i18n::t("le délai doit être compris entre 1 seconde et 30 jours", "the delay must be between 1 second and 30 days").into());
             }
         }
+        let seed = self.seed_with(spend_code)?;
+        self.protection_tag = match &p {
+            Some(p) => crate::wallet::protection_tag(&seed, p),
+            None => [0; 32],
+        };
         self.protection = p;
         self.save()
     }
@@ -436,7 +478,7 @@ impl Wallet {
         v
     }
 
-    /// Reprend un paiement retenu : les fonds reviennent sur une adresse neuve de ce portefeuille.
+    /// Reprend un paiement retenu : les fonds reviennent à celui qui l'avait envoyé (moi, ou celui que je garde).
     pub fn cancel_retained(&mut self, chain: &Chain, mempool: &Mempool, op: OutPoint, spend_code: Option<&str>) -> Result<Transaction, String> {
         let u = chain.utxo.get(&op).ok_or(crate::i18n::t("ce paiement n'existe plus (déjà reçu ou annulé ?)", "this payment no longer exists (already claimed or cancelled?)"))?;
         let cancel = u.cancel.ok_or(crate::i18n::t("ce paiement n'est pas annulable", "this payment cannot be cancelled"))?;
@@ -450,13 +492,17 @@ impl Wallet {
             return Err(crate::i18n::t("une annulation est déjà en attente", "a cancellation is already pending").into());
         }
         let fee = min_fee(10 + 7_288 + 77 + 1 + 1 + 8);
-        if u.amount <= fee {
+        if u.amount < fee + crate::config::DUST {
             return Err("montant trop petit pour couvrir les frais".into());
         }
         let amount = u.amount;
         let seed = self.seed_with(spend_code)?;
         let kp = derive(&seed, self.by_addr[&cancel] as u32);
-        let dest = self.new_key();
+        // L'argent revient à celui qui l'avait envoyé (obligatoire avec les règles v1.3.0).
+        let dest = match u.refund {
+            Some(r) => r,
+            None => self.new_key(),
+        };
         let mut tx = Transaction::new(
             vec![TxIn::single(op, kp.public_key_bytes().to_vec(), vec![0; SIGNATURE_SIZE])],
             vec![TxOut::new(amount - fee, dest)],
@@ -630,9 +676,13 @@ impl Wallet {
                 crate::wallet::format_amount(fee)
             ));
         }
+        if amount < crate::config::DUST {
+            return Err(crate::i18n::t("montant trop petit : au moins 0,0001 NFR", "amount too small: at least 0.0001 NFR").into());
+        }
         let mut outputs = vec![TxOut::new(amount, to)];
         let change = total - amount - fee;
-        if change > 0 {
+        // Monnaie rendue plus petite que la « poussière » : laissée en frais (sinon la transaction ne serait pas relayée).
+        if change >= crate::config::DUST {
             outputs.push(TxOut::new(change, ga));
         }
         let inputs = chosen.iter().map(|(op, _)| TxIn::multisig(*op, g.m, g.members.clone())).collect();
@@ -674,6 +724,23 @@ impl Wallet {
     /// Ajoute ma signature à chaque entrée de la proposition et renvoie la proposition mise à jour.
     pub fn ms_sign(&mut self, text: &str, spend_code: Option<&str>) -> Result<String, String> {
         let mut tx = proposal_to_tx(text)?;
+        // Ce que l'écran de vérification ne montre pas ne doit pas pouvoir être signé « à l'aveugle » :
+        // pas d'opération sur un pseudo, pas de sortie verrouillée ou reprenable par quelqu'un,
+        // et toutes les entrées doivent venir d'un seul et même groupe.
+        if tx.name_op.is_some() {
+            return Err(crate::i18n::t("proposition refusée : elle contient une opération sur un pseudo", "proposal refused: it contains a name operation").into());
+        }
+        if tx.outputs.iter().any(|o| o.lock_until != 0 || o.cancel.is_some()) {
+            return Err(crate::i18n::t(
+                "proposition refusée : une sortie est verrouillée ou peut être reprise par quelqu'un",
+                "proposal refused: an output is locked or can be taken back by someone",
+            )
+            .into());
+        }
+        let groupe = tx.inputs.first().and_then(|i| i.multi.as_ref()).map(|w| (w.m, w.members.clone()));
+        if tx.inputs.iter().any(|i| i.multi.as_ref().map(|w| (w.m, w.members.clone())) != groupe) {
+            return Err(crate::i18n::t("proposition refusée : les entrées viennent de plusieurs groupes", "proposal refused: the inputs come from several groups").into());
+        }
         // Contrôle avant de déchiffrer quoi que ce soit : suis-je membre, ai-je déjà signé ?
         for i in &tx.inputs {
             let w = i.multi.as_ref().unwrap();
@@ -707,7 +774,14 @@ impl Wallet {
             return Err(crate::i18n::t("le mot de défi fait 60 octets au maximum", "the challenge word is 60 bytes at most").into());
         }
         let mut per_addr: HashMap<Address, u64> = HashMap::new();
-        for u in chain.utxo.values().filter(|u| self.is_mine(&u.address)) {
+        // Mêmes règles que la vérification : seulement les fonds mûrs et débloqués.
+        let (next, mtp) = (chain.height() + 1, chain.next_mtp());
+        for u in chain
+            .utxo
+            .values()
+            .filter(|u| self.is_mine(&u.address))
+            .filter(|u| !(u.coinbase && next < u.height + COINBASE_MATURITY) && is_unlocked(u.lock_until, next, mtp))
+        {
             *per_addr.entry(u.address).or_insert(0) += u.amount;
         }
         let mut list: Vec<(Address, u64)> = per_addr.into_iter().collect();
@@ -802,7 +876,7 @@ mod tests {
         let mut w = Wallet::from_seed([42; 32]);
         let mut c = mined(&mut w, MATURE);
         let friend = Wallet::from_seed([1; 32]).keys[0].0;
-        w.set_protection(Some(Protection { threshold: 500_000_000, delay_secs: 3_600, guardian: None })).unwrap();
+        w.set_protection(Some(Protection { threshold: 500_000_000, delay_secs: 3_600, guardian: None }), None).unwrap();
         let mp = Mempool::default();
 
         // Petit paiement : aucune retenue. Gros paiement : retenu et annulable.
@@ -839,7 +913,7 @@ mod tests {
         let c = mined(&mut w, MATURE);
         let guardian = Wallet::from_seed([77; 32]);
         let g_addr = guardian.keys[0].0;
-        w.set_protection(Some(Protection { threshold: 1, delay_secs: 3_600, guardian: Some(g_addr) })).unwrap();
+        w.set_protection(Some(Protection { threshold: 1, delay_secs: 3_600, guardian: Some(g_addr) }), None).unwrap();
         let tx = w.create_payment(&c, &Mempool::default(), [9; 32], 100_000_000, &PaymentOptions::default(), None).unwrap();
         assert_eq!(tx.outputs[0].cancel, Some(g_addr));
         // Le portefeuille de l'expéditeur lui-même ne peut pas annuler : seul le gardien le peut.
@@ -852,11 +926,11 @@ mod tests {
     #[test]
     fn reglages_de_protection_valides() {
         let mut w = Wallet::from_seed([1; 32]);
-        assert!(w.set_protection(Some(Protection { threshold: 0, delay_secs: 60, guardian: None })).is_err());
-        assert!(w.set_protection(Some(Protection { threshold: 1, delay_secs: 0, guardian: None })).is_err());
-        assert!(w.set_protection(Some(Protection { threshold: 1, delay_secs: 31 * 86_400, guardian: None })).is_err());
-        assert!(w.set_protection(Some(Protection { threshold: 1, delay_secs: 86_400, guardian: None })).is_ok());
-        assert!(w.set_protection(None).is_ok());
+        assert!(w.set_protection(Some(Protection { threshold: 0, delay_secs: 60, guardian: None }), None).is_err());
+        assert!(w.set_protection(Some(Protection { threshold: 1, delay_secs: 0, guardian: None }), None).is_err());
+        assert!(w.set_protection(Some(Protection { threshold: 1, delay_secs: 31 * 86_400, guardian: None }), None).is_err());
+        assert!(w.set_protection(Some(Protection { threshold: 1, delay_secs: 86_400, guardian: None }), None).is_ok());
+        assert!(w.set_protection(None, None).is_ok());
     }
 
     #[test]
@@ -1042,7 +1116,7 @@ mod tests {
         let dir = temp_dir("reglages");
         let p = dir.join("wallet.dat");
         let (mut w, _) = Wallet::create_encrypted(&p, OUV, DEP, vault::TEST).unwrap();
-        w.set_protection(Some(Protection { threshold: 123, delay_secs: 7_200, guardian: Some([4; 32]) })).unwrap();
+        w.set_protection(Some(Protection { threshold: 123, delay_secs: 7_200, guardian: Some([4; 32]) }), Some(DEP)).unwrap();
         w.add_group("famille", 2, &[[1; 32], [2; 32], [3; 32]]).unwrap();
         let w2 = Wallet::unlock(&p, OUV).unwrap();
         assert_eq!(w2.protection(), Some(&Protection { threshold: 123, delay_secs: 7_200, guardian: Some([4; 32]) }));
