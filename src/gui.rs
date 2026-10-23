@@ -2260,8 +2260,8 @@ impl App {
         });
         ui.label(
             RichText::new(t(
-                "NumFranc — licence MIT, sans garantie.",
-                "NumFranc — MIT licence, no warranty.",
+                "NumFranc a l'ambition de devenir une infrastructure de paiement post-quantique de référence, utilisée par les particuliers comme par les entreprises. Logiciel libre en développement : aucune vente de NFR, aucune promesse de valeur. Licence MIT, sans garantie.",
+                "NumFranc aims to become a leading post-quantum payment infrastructure, used by individuals and businesses alike. Open-source software under development: no NFR for sale, no promise of value. MIT licence, no warranty.",
             ))
             .small()
             .color(p.grey),

@@ -215,7 +215,7 @@ Turn on expert mode	Ativar o modo especialista
 Shortcut	Atalho
 Add NumFranc to the applications menu: launch it with one click, without a Terminal.	Adicione o NumFranc ao menu de aplicações: abra-o com um clique, sem Terminal.
 Add NumFranc to the applications menu	Adicionar o NumFranc ao menu de aplicações
-NumFranc — MIT licence, no warranty.	NumFranc — licença MIT, sem garantia.
+NumFranc aims to become a leading post-quantum payment infrastructure, used by individuals and businesses alike. Open-source software under development: no NFR for sale, no promise of value. MIT licence, no warranty.	O NumFranc tem a ambição de se tornar uma infraestrutura de pagamento pós-quântica de referência, utilizada tanto por particulares como por empresas. Software livre em desenvolvimento: nenhuma venda de NFR, nenhuma promessa de valor. Licença MIT, sem garantia.
 Issuance dashboard	Painel de emissão
 Computed by YOUR node from the protocol rules: nobody can lie to you about how many NFR exist.	Calculado pelo SEU nó a partir das regras do protocolo: ninguém lhe pode mentir sobre quantos NFR existem.
 NFR already created: 	NFR já criados: 

@@ -215,7 +215,7 @@ Turn on expert mode	Attiva la modalità esperto
 Shortcut	Scorciatoia
 Add NumFranc to the applications menu: launch it with one click, without a Terminal.	Aggiungi NumFranc al menu delle applicazioni: avvialo con un clic, senza Terminale.
 Add NumFranc to the applications menu	Aggiungi NumFranc al menu delle applicazioni
-NumFranc — MIT licence, no warranty.	NumFranc — licenza MIT, senza garanzia.
+NumFranc aims to become a leading post-quantum payment infrastructure, used by individuals and businesses alike. Open-source software under development: no NFR for sale, no promise of value. MIT licence, no warranty.	NumFranc ambisce a diventare un'infrastruttura di pagamento post-quantistica di riferimento, utilizzata sia dai privati sia dalle aziende. Software libero in sviluppo: nessuna vendita di NFR, nessuna promessa di valore. Licenza MIT, senza garanzia.
 Issuance dashboard	Pannello di emissione
 Computed by YOUR node from the protocol rules: nobody can lie to you about how many NFR exist.	Calcolato dal TUO nodo a partire dalle regole del protocollo: nessuno può mentirti su quanti NFR esistono.
 NFR already created: 	NFR già creati: 

@@ -59,6 +59,6 @@ NumFranc (NFR) — user guide (English)
      (uninstalling never touches them).
    - Check a downloaded installer: python3 sha3sum.py --fichier SHA3SUMS.txt FILE-NAME (tool included in NumFranc.zip).
      SHA3SUMS.txt is signed (SHA3SUMS.txt.sig, SLH-DSA) with the public key in cle-publique.txt.
-   - No real money is involved: no NFR is for sale and no value is promised.
 
+NumFranc aims to become a leading post-quantum payment infrastructure, used by individuals and businesses alike. Open-source software under development: no NFR for sale, no promise of value.
 Software provided without warranty (MIT licence).
