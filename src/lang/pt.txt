@@ -215,7 +215,7 @@ Turn on expert mode	Ativar o modo especialista
 Shortcut	Atalho
 Add NumFranc to the applications menu: launch it with one click, without a Terminal.	Adicione o NumFranc ao menu de aplicações: abra-o com um clique, sem Terminal.
 Add NumFranc to the applications menu	Adicionar o NumFranc ao menu de aplicações
-NumFranc — MIT licence, no warranty. No connection with FrancNum.	NumFranc — licença MIT, sem garantia. Sem qualquer ligação ao FrancNum.
+NumFranc — MIT licence, no warranty.	NumFranc — licença MIT, sem garantia.
 Issuance dashboard	Painel de emissão
 Computed by YOUR node from the protocol rules: nobody can lie to you about how many NFR exist.	Calculado pelo SEU nó a partir das regras do protocolo: ninguém lhe pode mentir sobre quantos NFR existem.
 NFR already created: 	NFR já criados: 
@@ -540,3 +540,4 @@ proposal refused: it contains a name operation	proposta recusada: contém uma op
 proposal refused: an output is locked or can be taken back by someone	proposta recusada: uma saída está bloqueada ou alguém a pode recuperar
 proposal refused: the inputs come from several groups	proposta recusada: as entradas vêm de vários grupos
 A payment cancelled by the guardian always comes back to you (network rule from 9 November 2026; before that date, the guardian can send it elsewhere). The spending code above is required to change these settings.	Um pagamento cancelado pelo guardião volta sempre para si (regra da rede a partir de 9 de novembro de 2026; antes dessa data, o guardião pode enviá-lo para outro lado). Para alterar estas definições é preciso o código de gasto acima.
+{} ({} blocks per tier)	{} ({} blocos por patamar)

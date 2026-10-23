@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://shadowrook-crypto.github.io/NumFranc/sitemap.xml

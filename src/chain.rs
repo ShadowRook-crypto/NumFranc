@@ -35,7 +35,10 @@ pub fn is_time_warp(height: u64, timestamp: u64, parent_timestamp: u64) -> bool 
 
 /// Points de contrôle : (hauteur, hash en hexadécimal). À compléter à chaque version publiée, avec la ligne
 /// donnée par `numfranc --point-de-controle` sur un nœud à jour.
-pub const CHECKPOINTS: &[(u64, &str)] = &[];
+pub const CHECKPOINTS: &[(u64, &str)] = &[
+    // v1.3.1 : bloc n°300, relevé sur le nœud HP le 23 octobre 2026.
+    (300, "79e0447c3b13f1617aa0fa4df7f9208c04e8bad6ead84630d1e0ca933487fdf23c54b21785733839997d168b646a9bfd35c1e0b5ff88f97d3042754e6ff3a4ef"),
+];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UtxoEntry {

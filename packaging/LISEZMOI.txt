@@ -94,7 +94,12 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. NOUVEAUTÉS DE LA v1.3.0 (nouvelles règles du réseau, actives le 9 novembre 2026)
+6. NOUVEAUTÉS DE LA v1.3.1
+   - Premier point de contrôle (bloc n°300) : l'histoire de la chaîne jusqu'à ce bloc ne peut plus être réécrite.
+   - « blocs par palier » traduit dans toutes les langues ; petites corrections de textes.
+   - Bibliothèque de copier-coller Windows mise à jour.
+
+   NOUVEAUTÉS DE LA v1.3.0 (nouvelles règles du réseau, actives le 9 novembre 2026)
    Mettez NumFranc à jour avant le 9 novembre 2026 (la mise à jour automatique s'en charge) : ensuite, les
    anciennes versions ne suivent plus correctement le réseau et affichent une alerte rouge.
    - Points de contrôle : l'empreinte de blocs passés est inscrite dans NumFranc. Personne ne peut plus
@@ -237,4 +242,4 @@ MISE À JOUR depuis une ancienne version :
      du dossier de données en blocks-ancien.dat ;
    - depuis la v0.1 (adresses NFR1 + 128 caractères) : déplacez tout le dossier de données.
 
-Logiciel fourni sans garantie (licence MIT). NumFranc n'a aucun lien avec FrancNum.
+Logiciel fourni sans garantie (licence MIT).

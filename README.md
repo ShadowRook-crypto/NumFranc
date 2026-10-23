@@ -7,7 +7,7 @@
 Cryptomonnaie à preuve de travail, avec signatures **post-quantiques ML-DSA-87** dès le premier bloc.
 Écrite en Rust, un seul programme : nœud réseau + minage + portefeuille.
 
-> Logiciel fourni **sans garantie** (licence MIT). NumFranc n'a aucun lien avec « FrancNum » ni avec aucun État ou banque.
+> Logiciel fourni **sans garantie** (licence MIT). NumFranc n'a aucun lien avec un État ou une banque.
 
 ## Installer (sans terminal)
 Page de téléchargement : https://shadowrook-crypto.github.io/NumFranc/ (français et anglais).
@@ -18,7 +18,7 @@ Page de téléchargement : https://shadowrook-crypto.github.io/NumFranc/ (franç
 | Windows | `NumFranc-windows-installation.exe` | double-clic, « Suivant » (si SmartScreen : Informations complémentaires > Exécuter quand même) |
 | Linux | `NumFranc-linux-amd64.deb` ou `-arm64.deb` | double-clic, ou `sudo apt install ./NumFranc-linux-amd64.deb` |
 
-*English: download `NumFranc-macos.dmg`, `NumFranc-windows-installation.exe` or the `.deb` for your system from the latest release, double-click, done. NumFranc is not affiliated with « FrancNum » or with any state or bank.*
+*English: download `NumFranc-macos.dmg`, `NumFranc-windows-installation.exe` or the `.deb` for your system from the latest release, double-click, done. NumFranc is not affiliated with any state or bank.*
 
 Chaque version est signée (SLH-DSA) : `SHA3SUMS.txt` contient aussi les empreintes des installeurs (lignes `installeurs/…`) ; pour en vérifier un :
 `python3 sha3sum.py --fichier SHA3SUMS.txt NumFranc-macos.dmg` (outil fourni dans `NumFranc.zip`).

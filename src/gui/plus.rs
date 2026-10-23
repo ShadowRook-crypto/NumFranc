@@ -93,7 +93,7 @@ impl App {
             kv(ui, &t("NFR déjà créés : ", "NFR already created: ").to_string(), format!("{} / {}", format_amount(minted), format_amount(HARD_CAP)));
             kv(ui, &t("NFR restant à créer : ", "NFR left to create: ").to_string(), format_amount(HARD_CAP - minted));
             kv(ui, &t("Récompense du prochain bloc : ", "Next block reward: ").to_string(), format_amount(reward));
-            kv(ui, &t("Palier actuel : ", "Current tier: ").to_string(), format!("{} ({} blocs par palier)", palier, PALIER_BLOCKS));
+            kv(ui, &t("Palier actuel : ", "Current tier: ").to_string(), crate::tf!("{} ({} blocs par palier)", "{} ({} blocks per tier)", palier, PALIER_BLOCKS));
             let secs = to_next * TARGET_BLOCK_TIME;
             kv(
                 ui,

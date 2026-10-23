@@ -61,4 +61,4 @@ NumFranc (NFR) — user guide (English)
      SHA3SUMS.txt is signed (SHA3SUMS.txt.sig, SLH-DSA) with the public key in cle-publique.txt.
    - No real money is involved: no NFR is for sale and no value is promised.
 
-NumFranc has no connection with FrancNum. Software provided without warranty (MIT licence).
+Software provided without warranty (MIT licence).

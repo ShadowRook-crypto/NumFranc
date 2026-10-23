@@ -2260,8 +2260,8 @@ impl App {
         });
         ui.label(
             RichText::new(t(
-                "NumFranc — licence MIT, sans garantie. Aucun lien avec FrancNum.",
-                "NumFranc — MIT licence, no warranty. No connection with FrancNum.",
+                "NumFranc — licence MIT, sans garantie.",
+                "NumFranc — MIT licence, no warranty.",
             ))
             .small()
             .color(p.grey),
