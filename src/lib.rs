@@ -28,4 +28,3 @@ pub mod wallet_plus;
 pub mod release;
 pub mod node;
 pub mod p2p;
-pub mod points;

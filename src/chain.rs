@@ -90,19 +90,6 @@ pub enum ChainError {
     AlreadyKnown,
 }
 
-/// Résultat de l'application d'un point de contrôle signé.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PointEtat {
-    /// Appliqué : l'histoire jusqu'à ce bloc ne peut plus être réécrite.
-    Applique,
-    /// Pas plus récent que le dernier point connu.
-    Ancien,
-    /// Notre chaîne n'est pas encore aussi longue : à réessayer plus tard.
-    EnAttente,
-    /// Notre chaîne contient un autre bloc à cette hauteur, et on ne peut pas revenir sur le bon.
-    Conflit,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Added {
     Extended,
@@ -799,32 +786,6 @@ impl Chain {
         self.points.iter().map(|p| p.0).max()
     }
 
-    /// Applique un point de contrôle signé (déjà vérifié) : le bloc `hash` doit être à la hauteur `height`.
-    /// Si on suit une autre branche et qu'on connaît ce bloc, on revient dessus (dans la limite des
-    /// réorganisations). Renvoie l'état obtenu.
-    pub fn ajouter_point(&mut self, height: u64, hash: Hash) -> PointEtat {
-        if self.dernier_point().is_some_and(|d| d >= height) {
-            return PointEtat::Ancien;
-        }
-        match self.hash_at(height) {
-            Some(h) if h == hash => {}
-            Some(_) => {
-                // On suit une autre branche : retour sur la branche signée si on en a les blocs.
-                if !self.index.get(&hash).is_some_and(|e| !e.invalid && e.height == height) || self.try_reorg(hash).is_err() {
-                    return PointEtat::Conflit;
-                }
-            }
-            None => return PointEtat::EnAttente,
-        }
-        self.points.push((height, hex(&hash)));
-        PointEtat::Applique
-    }
-
-    /// Notre chaîne a-t-elle au moins le travail minimal de la vraie chaîne (synchronisation terminée) ?
-    pub fn est_synchronisee(&self) -> bool {
-        self.limite_reorg()
-    }
-
     /// La limite de réorganisation s'applique-t-elle ? (Non pendant la synchronisation initiale.)
     fn limite_reorg(&self) -> bool {
         self.tip_work() >= &self.min_work_reorg
@@ -1438,35 +1399,6 @@ pub mod tests {
         assert_eq!(c.add_block(y.clone(), now() + 60), Ok(Added::SideChain));
         let z = make_block(&c, y.hash(), vec![], addr(&b_), 691, b"z");
         assert!(matches!(c.add_block(z, now() + 120), Ok(Added::Reorganized { .. })));
-    }
-
-    /// v1.4.0 : point signé appliqué -> plus de réécriture avant ; un point d'une autre branche connue nous y ramène.
-    #[test]
-    fn points_signes_appliques() {
-        let kp = KeyPair::from_seed(&[15; 32]);
-        let mut c = chain_with(6, &kp);
-        let h4 = c.hash_at(4).unwrap();
-        assert_eq!(c.ajouter_point(9, [1; 64]), PointEtat::EnAttente);
-        assert_eq!(c.ajouter_point(4, [1; 64]), PointEtat::Conflit);
-        assert_eq!(c.ajouter_point(4, h4), PointEtat::Applique);
-        assert_eq!(c.ajouter_point(3, c.hash_at(3).unwrap()), PointEtat::Ancien);
-        // Une branche partant du bloc 3 (avant le point) ne peut plus être enregistrée.
-        let b = make_block(&c, c.hash_at(3).unwrap(), vec![], addr(&kp), 999, b"f");
-        assert!(matches!(c.add_block(b, now()), Err(ChainError::KnownBad(_))));
-
-        // Autre nœud qui suit une branche différente : le point signé le ramène sur la bonne.
-        let mut d = chain_with(2, &kp);
-        let fourche = d.tip();
-        let bonne = make_block(&d, fourche, vec![], addr(&kp), 691, b"bonne");
-        let mauvaise1 = make_block(&d, fourche, vec![], addr(&kp), 691, b"mauvaise");
-        d.add_block(mauvaise1.clone(), now()).unwrap();
-        let mauvaise2 = make_block(&d, mauvaise1.hash(), vec![], addr(&kp), 691, b"m2");
-        d.add_block(mauvaise2, now()).unwrap();
-        d.add_block(bonne.clone(), now()).unwrap(); // gardée de côté (moins de travail)
-        assert_ne!(d.hash_at(3), Some(bonne.hash()));
-        assert_eq!(d.ajouter_point(3, bonne.hash()), PointEtat::Applique);
-        assert_eq!(d.hash_at(3), Some(bonne.hash()));
-        assert_eq!(d.height(), 3);
     }
 
     /// Règles v1.3.0 : l'annulation revient à l'expéditeur, frais de pseudo détruits.

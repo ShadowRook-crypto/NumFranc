@@ -542,6 +542,4 @@ proposal refused: the inputs come from several groups	Vorschlag abgelehnt: Die E
 A payment cancelled by the guardian always comes back to you (network rule from 9 November 2026; before that date, the guardian can send it elsewhere). The spending code above is required to change these settings.	Eine vom Wächter stornierte Zahlung kommt immer zu dir zurück (Netzwerkregel ab dem 9. November 2026; vor diesem Datum kann der Wächter sie woanders hinschicken). Zum Ändern dieser Einstellungen ist der Ausgabecode oben nötig.
 {} ({} blocks per tier)	{} ({} Blöcke pro Stufe)
 confirming: {}/{} blocks	wird bestätigt: {}/{} Blöcke
-[i] This node signs the network checkpoints (protection against 51% attacks).	[i] Dieser Knoten signiert die Kontrollpunkte des Netzwerks (Schutz vor 51-%-Angriffen).
 [!] Competing chain revealed late ({retard} blocks): set aside, possible 51% attack.	[!] Konkurrierende Kette verspätet aufgedeckt ({retard} Blöcke): zurückgestellt, möglicher 51-%-Angriff.
-[!] Your chain differs from the signed checkpoint at block #{}: your computer may be following an attack chain. It will fix itself as soon as it receives the right blocks.	[!] Deine Kette weicht vom signierten Kontrollpunkt bei Block #{} ab: Dein Computer folgt vielleicht einer Angriffskette. Er korrigiert sich, sobald er die richtigen Blöcke erhält.

@@ -22,7 +22,6 @@ fn max_payload(cmd: &str) -> usize {
         "addr" => 3 + 1_000 * 256,
         "tx" => crate::config::MAX_TX_SIZE,
         "block" => MAX_PAYLOAD,
-        "point" => crate::points::TAILLE,
         // Commande inconnue : lue (pour rester synchronisé sur la connexion) puis ignorée, si elle est petite.
         _ => 64 * 1024,
     }
@@ -40,8 +39,6 @@ pub enum Message {
     Addr(Vec<String>),
     Ping(u64),
     Pong(u64),
-    /// Point de contrôle signé (voir points.rs).
-    Point(crate::points::PointSigne),
 }
 
 impl Message {
@@ -57,7 +54,6 @@ impl Message {
             Message::Addr(_) => "addr",
             Message::Ping(_) => "ping",
             Message::Pong(_) => "pong",
-            Message::Point(_) => "point",
         }
     }
 
@@ -79,7 +75,6 @@ impl Message {
             }
             Message::Block(b) => out = b.serialize(),
             Message::Tx(t) => out = t.serialize(),
-            Message::Point(p) => out = p.encoder(),
             Message::Tip(h) | Message::Ping(h) | Message::Pong(h) => out.extend_from_slice(&h.to_be_bytes()),
             Message::Addr(list) => {
                 put_varint(&mut out, list.len() as u64);
@@ -111,7 +106,6 @@ impl Message {
             }
             "block" => return Ok(Message::Block(Block::from_bytes(payload)?)),
             "tx" => return Ok(Message::Tx(Transaction::from_bytes(payload)?)),
-            "point" => return Ok(Message::Point(crate::points::PointSigne::decoder(payload)?)),
             "tip" => Message::Tip(r.u64()?),
             "ping" => Message::Ping(r.u64()?),
             "pong" => Message::Pong(r.u64()?),
@@ -190,7 +184,6 @@ mod tests {
             Message::Addr(vec!["192.168.1.35:6910".into()]),
             Message::Ping(5),
             Message::Block(crate::chain::genesis_block()),
-            Message::Point(crate::points::PointSigne::signer(&crate::signature::KeyPair::from_seed(&[3; 32]), 12, [5; 64]).unwrap()),
         ];
         for m in msgs {
             let mut buf = Vec::new();
