@@ -118,7 +118,7 @@ The recipient can spend from {when} (about 1 h margin). Nobody can unlock it bef
 Spending code (to sign)	Código de gasto (para assinar)
 Sign and send	Assinar e enviar
 Opening the vault (a few seconds) then post-quantum signature…	A abrir o cofre (alguns segundos) e depois assinatura pós-quântica…
-{} sent to {who} (fee {}). Wait 6 blocks for it to be safe.	{} enviados a {who} (comissão {}). Aguarde 6 blocos para ter segurança.
+{} sent to {who} (fee {}). Wait {} blocks for it to be safe.	{} enviados a {who} (comissão {}). Aguarde {} blocos para ter segurança.
 Payment history	Histórico de pagamentos
 Export to spreadsheet (CSV)	Exportar para folha de cálculo (CSV)
 History saved: {}	Histórico guardado: {}
@@ -541,3 +541,7 @@ proposal refused: an output is locked or can be taken back by someone	proposta r
 proposal refused: the inputs come from several groups	proposta recusada: as entradas vêm de vários grupos
 A payment cancelled by the guardian always comes back to you (network rule from 9 November 2026; before that date, the guardian can send it elsewhere). The spending code above is required to change these settings.	Um pagamento cancelado pelo guardião volta sempre para si (regra da rede a partir de 9 de novembro de 2026; antes dessa data, o guardião pode enviá-lo para outro lado). Para alterar estas definições é preciso o código de gasto acima.
 {} ({} blocks per tier)	{} ({} blocos por patamar)
+confirming: {}/{} blocks	a confirmar: {}/{} blocos
+[i] This node signs the network checkpoints (protection against 51% attacks).	[i] Este nó assina os pontos de controlo da rede (proteção contra ataques de 51 %).
+[!] Competing chain revealed late ({retard} blocks): set aside, possible 51% attack.	[!] Cadeia concorrente revelada com atraso ({retard} blocos): posta de lado, possível ataque de 51 %.
+[!] Your chain differs from the signed checkpoint at block #{}: your computer may be following an attack chain. It will fix itself as soon as it receives the right blocks.	[!] A sua cadeia é diferente do ponto de controlo assinado do bloco #{}: o seu computador pode estar a seguir uma cadeia de ataque. Corrige-se assim que receber os blocos certos.

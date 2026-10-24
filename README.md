@@ -155,6 +155,7 @@ et Windows, puis publie `NumFranc.zip`.
 - [x] Mise à jour automatique en un clic, vérifiée deux fois, et alerte de faille (v1.2.2)
 - [x] Audit de sécurité complet et corrections (v1.2.3)
 - [x] Points de contrôle, gardien qui rembourse l'expéditeur, frais de pseudo détruits (v1.3.0, actif le 9 novembre 2026)
+- [x] Protection renforcée contre les attaques à 51 % : points de contrôle signés, chaînes cachées pénalisées, 30 confirmations pour les gros paiements (v1.4.0)
 - [ ] Plusieurs nœuds d'amorçage tenus par des personnes différentes (`DEFAULT_SEEDS`, en plus de l'annuaire mondial)
 - [ ] Synchronisation « headers-first »
 - [ ] Interface RPC locale (port 6911) pour une future passerelle d'échange

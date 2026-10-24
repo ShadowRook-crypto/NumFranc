@@ -118,7 +118,7 @@ The recipient can spend from {when} (about 1 h margin). Nobody can unlock it bef
 Spending code (to sign)	Código de gasto (para firmar)
 Sign and send	Firmar y enviar
 Opening the vault (a few seconds) then post-quantum signature…	Abriendo la bóveda (unos segundos) y luego firma poscuántica…
-{} sent to {who} (fee {}). Wait 6 blocks for it to be safe.	{} enviados a {who} (comisión {}). Espera 6 bloques para estar seguro.
+{} sent to {who} (fee {}). Wait {} blocks for it to be safe.	{} enviados a {who} (comisión {}). Espera {} bloques para estar seguro.
 Payment history	Historial de pagos
 Export to spreadsheet (CSV)	Exportar a hoja de cálculo (CSV)
 History saved: {}	Historial guardado: {}
@@ -541,3 +541,7 @@ proposal refused: an output is locked or can be taken back by someone	propuesta 
 proposal refused: the inputs come from several groups	propuesta rechazada: las entradas provienen de varios grupos
 A payment cancelled by the guardian always comes back to you (network rule from 9 November 2026; before that date, the guardian can send it elsewhere). The spending code above is required to change these settings.	Un pago cancelado por el guardián siempre vuelve a ti (regla de la red a partir del 9 de noviembre de 2026; antes de esa fecha, el guardián puede enviarlo a otro sitio). Para cambiar estos ajustes se necesita el código de gasto de arriba.
 {} ({} blocks per tier)	{} ({} bloques por nivel)
+confirming: {}/{} blocks	confirmándose: {}/{} bloques
+[i] This node signs the network checkpoints (protection against 51% attacks).	[i] Este nodo firma los puntos de control de la red (protección contra los ataques del 51 %).
+[!] Competing chain revealed late ({retard} blocks): set aside, possible 51% attack.	[!] Cadena competidora revelada con retraso ({retard} bloques): apartada, posible ataque del 51 %.
+[!] Your chain differs from the signed checkpoint at block #{}: your computer may be following an attack chain. It will fix itself as soon as it receives the right blocks.	[!] Tu cadena es distinta del punto de control firmado del bloque #{}: tu ordenador quizá sigue una cadena de ataque. Se corregirá en cuanto reciba los bloques correctos.

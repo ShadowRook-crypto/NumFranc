@@ -94,7 +94,16 @@ NumFranc (NFR) — mode d'emploi
    envoyer accepte un nom du carnet : envoyer Maman 5
    Sécurité : secours (3 morceaux), motdepasse (changer les deux secrets).
 
-6. NOUVEAUTÉS DE LA v1.3.2
+6. NOUVEAUTÉS DE LA v1.4.0 (protection renforcée contre les attaques à 51 %)
+   - Points de contrôle signés : un nœud de confiance signe régulièrement (ML-DSA-87) un bloc récent ; tous
+     les NumFranc refusent ensuite de réécrire l'histoire avant ce bloc. Système temporaire, le temps que le
+     réseau grandisse : il s'arrête tout seul le 1er janvier 2028.
+   - Chaînes cachées pénalisées : une chaîne minée en secret puis révélée d'un coup doit apporter beaucoup
+     plus de travail pour être acceptée (pendant 2 heures).
+   - Gros paiements (100 NFR et plus) : NumFranc conseille d'attendre 30 blocs au lieu de 6, et l'historique
+     affiche « en cours de confirmation : x/y blocs ».
+
+   NOUVEAUTÉS DE LA v1.3.2
    - Nouvelle présentation du projet, dans l'application, sur le site et dans les documents :
      NumFranc a l'ambition de devenir une infrastructure de paiement post-quantique de référence.
 

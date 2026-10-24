@@ -44,6 +44,29 @@ pub const COINBASE_MATURITY: u64 = 100;
 pub const MAX_REORG_DEPTH: u64 = 10;
 /// Nombre de confirmations conseillé avant de considérer un paiement comme sûr.
 pub const SAFE_CONFIRMATIONS: u64 = 6;
+/// Gros paiements (100 NFR et plus) : on conseille d'attendre davantage, car une attaque à 51 % coûte
+/// moins cher que ce qu'elle rapporterait.
+pub const GROS_PAIEMENT: u64 = 100 * MIN_UNIT;
+pub const SAFE_CONFIRMATIONS_GROS: u64 = 30;
+
+/// Nombre de blocs à attendre avant de considérer un paiement de ce montant comme sûr.
+pub fn confirmations_conseillees(montant: u64) -> u64 {
+    if montant >= GROS_PAIEMENT { SAFE_CONFIRMATIONS_GROS } else { SAFE_CONFIRMATIONS }
+}
+
+/// --- Protections contre les attaques à 51 % pendant le démarrage du réseau (v1.4.0) ---
+/// Chaîne cachée : une branche concurrente révélée alors qu'au moins PENALITE_MIN blocs de notre chaîne
+/// étaient déjà arrivés doit apporter, en plus, autant de blocs de travail que ce retard. La pénalité dure
+/// PENALITE_DUREE secondes après l'arrivée de la branche (ensuite, la règle normale s'applique : deux moitiés
+/// du réseau séparées un moment finissent toujours par se remettre d'accord).
+pub const PENALITE_MIN: u64 = 2;
+pub const PENALITE_DUREE: u64 = 7_200;
+/// Points de contrôle signés : empreinte SHA3-512 de la clé publique autorisée (None = système inactif).
+pub const POINTS_CLE_EMPREINTE: Option<&str> = Some("3cccddb1cea0d947df1a043da13b14c33f7229962382aa330ac641d4038e08ab4c92de62a028f6f1a3a6de7f54ae4546d7faa0a0be7ca352a1d17c961f078b43");
+/// Le nœud signataire signe le bloc enterré sous POINTS_PROFONDEUR blocs de sa chaîne.
+pub const POINTS_PROFONDEUR: u64 = 3;
+/// Fin du système de points signés (1er janvier 2028, 00:00 UTC) : à prolonger dans une version si besoin.
+pub const POINTS_FIN: u64 = 1_830_297_600;
 
 /// Cible maximale : 2^512 - 1.
 pub const MAX_TARGET_BE: [u8; 64] = [0xFF; 64];

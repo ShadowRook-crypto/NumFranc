@@ -153,6 +153,12 @@ pub struct Node {
     manual_port: AtomicBool,
     /// Adresse de la box, de ce PC et port : pour le guide de réglage manuel.
     aide: Mutex<Option<portmap::AideBox>>,
+    /// Dernier point de contrôle signé reçu (appliqué ou en attente).
+    point: Mutex<Option<crate::points::PointSigne>>,
+    /// Clé de points de contrôle, si ce nœud est le signataire.
+    cle_points: Option<crate::signature::KeyPair>,
+    /// Avertissement « chaîne différente du point signé » déjà affiché.
+    conflit_signale: AtomicBool,
 }
 
 /// 8 premiers octets du hash du genesis : seuls les nœuds du même réseau se répondent.
@@ -319,7 +325,17 @@ impl Node {
             inbound_public: AtomicBool::new(false),
             manual_port: AtomicBool::new(false),
             aide: Mutex::new(None),
+            point: Mutex::new(crate::points::charger(&opts.data_dir)),
+            cle_points: crate::points::charger_cle(&opts.data_dir),
+            conflit_signale: AtomicBool::new(false),
         });
+        if node.cle_points.is_some() {
+            log(crate::i18n::t(
+                "[i] Ce nœud signe les points de contrôle du réseau (protection contre les attaques à 51 %).",
+                "[i] This node signs the network checkpoints (protection against 51% attacks).",
+            ));
+        }
+        node.appliquer_point();
 
         let listener = TcpListener::bind(("0.0.0.0", opts.port))
             .map_err(|e| format!("impossible d'écouter sur le port {} : {e}", opts.port))?;
@@ -703,6 +719,10 @@ impl Node {
                 }
                 self.send(id, &Message::Verack);
                 self.send(id, &Message::GetAddr);
+                let point = self.point.lock().unwrap().clone();
+                if let Some(p) = point {
+                    self.send(id, &Message::Point(p));
+                }
                 if height > self.chain.lock().unwrap().height() {
                     self.request_blocks(id);
                 }
@@ -791,6 +811,7 @@ impl Node {
                 }
             }
             Message::Block(b) => self.on_block(b, Some(id)),
+            Message::Point(p) => self.on_point(id, p),
             Message::Tx(tx) => self.on_tx(id, tx),
         }
     }
@@ -863,6 +884,90 @@ impl Node {
         }
     }
 
+    /// Point de contrôle signé reçu d'un pair.
+    fn on_point(&self, id: u64, p: crate::points::PointSigne) {
+        if !crate::points::actif(now()) || !p.cle_officielle() {
+            return; // autre clé (autre version) ou système terminé : ignoré, sans punition
+        }
+        if self.point.lock().unwrap().as_ref().is_some_and(|c| p.height <= c.height) {
+            return;
+        }
+        if !p.verifier() {
+            self.ban(id, "point de contrôle mal signé");
+            return;
+        }
+        self.accepter_point(p.clone());
+        self.broadcast(&Message::Point(p), Some(id));
+    }
+
+    fn accepter_point(&self, p: crate::points::PointSigne) {
+        crate::points::enregistrer(&self.opts.data_dir, &p);
+        *self.point.lock().unwrap() = Some(p);
+        self.conflit_signale.store(false, Ordering::SeqCst);
+        self.appliquer_point();
+    }
+
+    /// Applique le dernier point signé connu, s'il ne l'est pas encore (appelé aussi après chaque nouveau bloc).
+    fn appliquer_point(&self) {
+        let Some(p) = self.point.lock().unwrap().clone() else { return };
+        if !crate::points::actif(now()) {
+            return;
+        }
+        let etat = {
+            let mut c = self.chain.lock().unwrap();
+            let avant = c.tip();
+            let e = c.ajouter_point(p.height, p.hash);
+            if c.tip() != avant {
+                self.mempool.lock().unwrap().revalidate(&c);
+            }
+            e
+        };
+        match etat {
+            crate::chain::PointEtat::Applique => {
+                self.tip_version.fetch_add(1, Ordering::SeqCst);
+            }
+            crate::chain::PointEtat::Conflit => {
+                if !self.conflit_signale.swap(true, Ordering::SeqCst) {
+                    log(&crate::tf!(
+                        "[!] Ta chaîne est différente du point de contrôle signé du bloc #{} : ton ordinateur suit peut-être une chaîne d'attaque. Il se corrigera dès qu'il recevra les bons blocs.",
+                        "[!] Your chain differs from the signed checkpoint at block #{}: your computer may be following an attack chain. It will fix itself as soon as it receives the right blocks.",
+                        p.height
+                    ));
+                }
+            }
+            crate::chain::PointEtat::Ancien | crate::chain::PointEtat::EnAttente => {}
+        }
+    }
+
+    /// Nœud signataire : signe le bloc enterré sous POINTS_PROFONDEUR blocs, s'il est plus récent que le dernier point.
+    fn signer_point(&self) {
+        let Some(cle) = &self.cle_points else { return };
+        if !crate::points::actif(now()) {
+            return;
+        }
+        let cible = {
+            let c = self.chain.lock().unwrap();
+            if !c.est_synchronisee() {
+                return;
+            }
+            let h = c.height().saturating_sub(POINTS_PROFONDEUR);
+            match c.hash_at(h) {
+                Some(hash) if h > 0 => (h, hash),
+                _ => return,
+            }
+        };
+        if self.point.lock().unwrap().as_ref().is_some_and(|p| p.height >= cible.0) {
+            return;
+        }
+        match crate::points::PointSigne::signer(cle, cible.0, cible.1) {
+            Ok(p) => {
+                self.accepter_point(p.clone());
+                self.broadcast(&Message::Point(p), None);
+            }
+            Err(e) => log(&format!("[!] Signature du point de contrôle impossible : {e}")),
+        }
+    }
+
     pub fn on_block(&self, block: Block, from: Option<u64>) {
         // Hauteur lue dans la coinbase : elle n'est crue qu'APRÈS validation du bloc (voir plus bas).
         let height_hint = block.txs.first().and_then(|t| t.coinbase_height()).unwrap_or(0);
@@ -905,8 +1010,20 @@ impl Node {
                 if block.header.timestamp + 3_600 > now() {
                     self.broadcast(&Message::Block(block), from);
                 }
+                self.appliquer_point();
+                self.signer_point();
             }
             Ok(Added::SideChain) | Err(ChainError::AlreadyKnown) => {}
+            Ok(Added::Penalisee { retard }) => {
+                let mut last = self.last_log.lock().unwrap();
+                if last.elapsed() > Duration::from_secs(60) {
+                    *last = Instant::now();
+                    log(&crate::tf!(
+                        "[!] Chaîne concurrente révélée en retard ({retard} blocs) : mise de côté, possible attaque à 51 %.",
+                        "[!] Competing chain revealed late ({retard} blocks): set aside, possible 51% attack."
+                    ));
+                }
+            }
             Err(ChainError::Orphan) => {
                 if let Some(id) = from {
                     // Au plus MAX_ORPHANS_PER_MIN blocs orphelins par minute et par pair : au-delà, on coupe

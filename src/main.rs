@@ -370,7 +370,7 @@ fn send(node: &Arc<Node>, rest: &str) -> Result<(), String> {
     }
     println!("Ouverture du coffre (quelques secondes) et signature...");
     let fee = numfranc::gui::pay(node, to, amount, &opts, &code)?;
-    println!("Transaction envoyée (frais : {}). Attendez {SAFE_CONFIRMATIONS} blocs pour qu'elle soit sûre.", format_amount(fee));
+    println!("Transaction envoyée (frais : {}). Attendez {} blocs pour qu'elle soit sûre.", format_amount(fee), numfranc::config::confirmations_conseillees(amount));
     Ok(())
 }
 

@@ -1665,10 +1665,11 @@ impl App {
                     self.spawn(t("Ouverture du coffre (quelques secondes) puis signature post-quantique…", "Opening the vault (a few seconds) then post-quantum signature…"), ctx, move || {
                         match pay(&n, to, amount, &opts, &code) {
                             Ok(fee) => JobResult::Sent(tf!(
-                                "{} envoyés à {who} (frais {}). Attends 6 blocs pour que ce soit sûr.",
-                                "{} sent to {who} (fee {}). Wait 6 blocks for it to be safe.",
+                                "{} envoyés à {who} (frais {}). Attends {} blocs pour que ce soit sûr.",
+                                "{} sent to {who} (fee {}). Wait {} blocks for it to be safe.",
                                 format_amount(amount),
-                                format_amount(fee)
+                                format_amount(fee),
+                                crate::config::confirmations_conseillees(amount)
                             )),
                             Err(e) => JobResult::Err(e),
                         }
@@ -1727,6 +1728,12 @@ impl App {
                     ui.colored_label(col, txt);
                     ui.label(RichText::new(format_amount(it.amount)).strong());
                     ui.vertical(|ui| {
+                        // Paiement reçu encore récent : nombre de confirmations, jusqu'au seuil conseillé.
+                        let besoin = crate::config::confirmations_conseillees(it.amount);
+                        let conf = height.saturating_sub(it.height) + 1;
+                        if it.kind == HistoryKind::Received && conf < besoin {
+                            ui.colored_label(p.orange, tf!("en cours de confirmation : {}/{} blocs", "confirming: {}/{} blocks", conf, besoin));
+                        }
                         if !is_unlocked(it.lock_until, height + 1, mtp) {
                             ui.colored_label(p.orange, tf!("verrouillé jusqu'au {}", "locked until {}", describe_lock(it.lock_until)));
                         }

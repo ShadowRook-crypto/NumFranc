@@ -69,6 +69,8 @@ pub struct IndexEntry {
     pub height: u64,
     pub work: BigUint,
     pub invalid: bool,
+    /// Heure locale de réception (0 = relu depuis notre fichier, ou genesis) : sert à repérer les chaînes cachées.
+    pub vu: u64,
 }
 
 /// Message interne de `check_block` pour un horodatage trop loin dans le futur (voir `ChainError::FutureTime`).
@@ -88,11 +90,26 @@ pub enum ChainError {
     AlreadyKnown,
 }
 
+/// Résultat de l'application d'un point de contrôle signé.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointEtat {
+    /// Appliqué : l'histoire jusqu'à ce bloc ne peut plus être réécrite.
+    Applique,
+    /// Pas plus récent que le dernier point connu.
+    Ancien,
+    /// Notre chaîne n'est pas encore aussi longue : à réessayer plus tard.
+    EnAttente,
+    /// Notre chaîne contient un autre bloc à cette hauteur, et on ne peut pas revenir sur le bon.
+    Conflit,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Added {
     Extended,
     Reorganized { depth: u64 },
     SideChain,
+    /// Branche plus lourde, mais révélée en retard (chaîne cachée) : gardée de côté pour l'instant.
+    Penalisee { retard: u64 },
 }
 
 /// Une modification de l'ensemble UTXO, pour pouvoir l'annuler dans l'ordre inverse.
@@ -395,7 +412,7 @@ impl Chain {
         let mut index = HashMap::new();
         index.insert(
             h,
-            IndexEntry { header: g.header.clone(), height: 0, work: block_work(&g.header.target), invalid: false },
+            IndexEntry { header: g.header.clone(), height: 0, work: block_work(&g.header.target), invalid: false, vu: 0 },
         );
         let vraie = h == genesis_block().hash();
         let min_work_reorg = if vraie {
@@ -716,7 +733,8 @@ impl Chain {
         }
 
         let work = parent_work + block_work(&block.header.target);
-        self.index.insert(hash, IndexEntry { header: block.header.clone(), height, work: work.clone(), invalid: false });
+        let vu = if loc.is_none() { now } else { 0 };
+        self.index.insert(hash, IndexEntry { header: block.header.clone(), height, work: work.clone(), invalid: false, vu });
         match loc {
             Some(l) => {
                 self.locs.insert(hash, l);
@@ -739,10 +757,72 @@ impl Chain {
                 }
             }
         } else if &work > self.tip_work() {
+            // Chaîne cachée (minée en secret puis révélée d'un coup) : il lui faut davantage de travail.
+            if loc.is_none() && self.limite_reorg() {
+                if let Some(retard) = self.retard_branche(hash, now) {
+                    let cible = self.index[&self.tip()].header.target;
+                    let besoin = self.tip_work().clone() + block_work(&cible) * BigUint::from(retard);
+                    if work <= besoin {
+                        return Ok(Added::Penalisee { retard });
+                    }
+                }
+            }
             self.try_reorg(hash)
         } else {
             Ok(Added::SideChain)
         }
+    }
+
+    /// Retard d'une branche concurrente : nombre de blocs de notre chaîne (après la fourche) qui étaient déjà
+    /// arrivés quand le premier bloc de la branche est apparu. None si pas de pénalité à appliquer.
+    fn retard_branche(&self, bout: Hash, now: u64) -> Option<u64> {
+        let mut h = bout;
+        let mut premier = u64::MAX;
+        while !self.is_active(&h) {
+            let e = &self.index[&h];
+            if e.vu == 0 {
+                return None;
+            }
+            premier = premier.min(e.vu);
+            h = e.header.previous_block_hash;
+        }
+        if premier == u64::MAX || now >= premier.saturating_add(PENALITE_DUREE) {
+            return None;
+        }
+        let fourche = self.index[&h].height as usize;
+        let retard = self.active[fourche + 1..].iter().filter(|b| self.index[*b].vu != 0 && self.index[*b].vu < premier).count() as u64;
+        (retard >= PENALITE_MIN).then_some(retard)
+    }
+
+    /// Hauteur du dernier point de contrôle (inscrit ou signé), s'il y en a un.
+    pub fn dernier_point(&self) -> Option<u64> {
+        self.points.iter().map(|p| p.0).max()
+    }
+
+    /// Applique un point de contrôle signé (déjà vérifié) : le bloc `hash` doit être à la hauteur `height`.
+    /// Si on suit une autre branche et qu'on connaît ce bloc, on revient dessus (dans la limite des
+    /// réorganisations). Renvoie l'état obtenu.
+    pub fn ajouter_point(&mut self, height: u64, hash: Hash) -> PointEtat {
+        if self.dernier_point().is_some_and(|d| d >= height) {
+            return PointEtat::Ancien;
+        }
+        match self.hash_at(height) {
+            Some(h) if h == hash => {}
+            Some(_) => {
+                // On suit une autre branche : retour sur la branche signée si on en a les blocs.
+                if !self.index.get(&hash).is_some_and(|e| !e.invalid && e.height == height) || self.try_reorg(hash).is_err() {
+                    return PointEtat::Conflit;
+                }
+            }
+            None => return PointEtat::EnAttente,
+        }
+        self.points.push((height, hex(&hash)));
+        PointEtat::Applique
+    }
+
+    /// Notre chaîne a-t-elle au moins le travail minimal de la vraie chaîne (synchronisation terminée) ?
+    pub fn est_synchronisee(&self) -> bool {
+        self.limite_reorg()
     }
 
     /// La limite de réorganisation s'applique-t-elle ? (Non pendant la synchronisation initiale.)
@@ -798,6 +878,10 @@ impl Chain {
             h = self.index[&h].header.previous_block_hash;
         }
         let fork_height = self.index[&h].height;
+        // Jamais de retour en arrière avant le dernier point de contrôle.
+        if self.dernier_point().is_some_and(|d| fork_height < d && self.height() >= d) {
+            return Err(ChainError::KnownBad("embranchement avant le dernier point de contrôle".into()));
+        }
         let depth = self.height() - fork_height;
         if self.limite_reorg() && depth > MAX_REORG_DEPTH {
             return Err(ChainError::ReorgTooDeep { depth });
@@ -1300,6 +1384,89 @@ pub mod tests {
         b.header.merkle_root = b.compute_merkle_root();
         assert!(mine(&mut b.header, u64::MAX));
         b
+    }
+
+    /// v1.4.0 : une chaîne cachée révélée d'un coup est mise de côté, puis acceptée après PENALITE_DUREE.
+    #[test]
+    fn chaine_cachee_penalisee_puis_acceptee() {
+        let honnete = KeyPair::from_seed(&[11; 32]);
+        let pirate = KeyPair::from_seed(&[12; 32]);
+        let mut c = test_chain();
+        c.min_work_reorg = BigUint::from(0u8); // chaîne « synchronisée » dès le départ
+        let base = c.tip();
+        // Le pirate mine 5 blocs en secret à partir de `base` (gardés hors de la chaîne).
+        let mut cachee = Chain::with_genesis(test_genesis());
+        let mut secrets = Vec::new();
+        for _ in 0..5 {
+            let b = make_block(&cachee, cachee.tip(), vec![], addr(&pirate), 691, b"p");
+            cachee.add_block(b.clone(), now()).unwrap();
+            secrets.push(b);
+        }
+        // Pendant ce temps, le réseau honnête reçoit 4 blocs, un toutes les 691 s.
+        let t0 = now();
+        for i in 0..4u64 {
+            let b = make_block(&c, c.tip(), vec![], addr(&honnete), 691, b"h");
+            c.add_block(b, t0 + i * 691).unwrap();
+        }
+        let tip_honnete = c.tip();
+        assert_eq!(base, c.hash_at(0).unwrap());
+        // Révélation : 5 blocs d'un coup. Plus de travail (5 > 4), mais 4 blocs de retard : mis de côté.
+        let t1 = t0 + 4 * 691;
+        let mut dernier = None;
+        for b in &secrets {
+            dernier = Some(c.add_block(b.clone(), t1));
+        }
+        assert_eq!(dernier.unwrap(), Ok(Added::Penalisee { retard: 4 }));
+        assert_eq!(c.tip(), tip_honnete);
+        // Deux heures plus tard, la branche (toujours plus lourde) qui continue est acceptée normalement.
+        let b = make_block(&cachee, cachee.tip(), vec![], addr(&pirate), 691, b"p");
+        cachee.add_block(b.clone(), now()).unwrap();
+        assert!(matches!(c.add_block(b, t1 + PENALITE_DUREE + 1), Ok(Added::Reorganized { .. })));
+    }
+
+    /// v1.4.0 : un bloc honnête concurrent arrivé une minute après n'est pas pénalisé (moins de PENALITE_MIN blocs).
+    #[test]
+    fn concurrence_honnete_non_penalisee() {
+        let a = KeyPair::from_seed(&[13; 32]);
+        let b_ = KeyPair::from_seed(&[14; 32]);
+        let mut c = test_chain();
+        c.min_work_reorg = BigUint::from(0u8);
+        let parent = c.tip();
+        let x = make_block(&c, parent, vec![], addr(&a), 691, b"x");
+        let y = make_block(&c, parent, vec![], addr(&b_), 691, b"y");
+        c.add_block(x, now()).unwrap();
+        assert_eq!(c.add_block(y.clone(), now() + 60), Ok(Added::SideChain));
+        let z = make_block(&c, y.hash(), vec![], addr(&b_), 691, b"z");
+        assert!(matches!(c.add_block(z, now() + 120), Ok(Added::Reorganized { .. })));
+    }
+
+    /// v1.4.0 : point signé appliqué -> plus de réécriture avant ; un point d'une autre branche connue nous y ramène.
+    #[test]
+    fn points_signes_appliques() {
+        let kp = KeyPair::from_seed(&[15; 32]);
+        let mut c = chain_with(6, &kp);
+        let h4 = c.hash_at(4).unwrap();
+        assert_eq!(c.ajouter_point(9, [1; 64]), PointEtat::EnAttente);
+        assert_eq!(c.ajouter_point(4, [1; 64]), PointEtat::Conflit);
+        assert_eq!(c.ajouter_point(4, h4), PointEtat::Applique);
+        assert_eq!(c.ajouter_point(3, c.hash_at(3).unwrap()), PointEtat::Ancien);
+        // Une branche partant du bloc 3 (avant le point) ne peut plus être enregistrée.
+        let b = make_block(&c, c.hash_at(3).unwrap(), vec![], addr(&kp), 999, b"f");
+        assert!(matches!(c.add_block(b, now()), Err(ChainError::KnownBad(_))));
+
+        // Autre nœud qui suit une branche différente : le point signé le ramène sur la bonne.
+        let mut d = chain_with(2, &kp);
+        let fourche = d.tip();
+        let bonne = make_block(&d, fourche, vec![], addr(&kp), 691, b"bonne");
+        let mauvaise1 = make_block(&d, fourche, vec![], addr(&kp), 691, b"mauvaise");
+        d.add_block(mauvaise1.clone(), now()).unwrap();
+        let mauvaise2 = make_block(&d, mauvaise1.hash(), vec![], addr(&kp), 691, b"m2");
+        d.add_block(mauvaise2, now()).unwrap();
+        d.add_block(bonne.clone(), now()).unwrap(); // gardée de côté (moins de travail)
+        assert_ne!(d.hash_at(3), Some(bonne.hash()));
+        assert_eq!(d.ajouter_point(3, bonne.hash()), PointEtat::Applique);
+        assert_eq!(d.hash_at(3), Some(bonne.hash()));
+        assert_eq!(d.height(), 3);
     }
 
     /// Règles v1.3.0 : l'annulation revient à l'expéditeur, frais de pseudo détruits.
