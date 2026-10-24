@@ -2,6 +2,12 @@
 
 # NumFranc (NFR)
 
+**La monnaie numérique post-quantique, minée par des ordinateurs ordinaires.**
+
+[![Licence MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE) [![Dernière version](https://img.shields.io/github/v/release/ShadowRook-crypto/NumFranc)](https://github.com/ShadowRook-crypto/NumFranc/releases/latest) ![Rust](https://img.shields.io/badge/Rust-2024-orange) ![Post-quantique](https://img.shields.io/badge/signatures-ML--DSA--87-darkblue)
+
+[Site](https://shadowrook-crypto.github.io/NumFranc/) · [Comment ça marche](https://shadowrook-crypto.github.io/NumFranc/comment-ca-marche.html) · [Post-quantique](https://shadowrook-crypto.github.io/NumFranc/post-quantique.html) · [Questions](https://shadowrook-crypto.github.io/NumFranc/faq.html) · [Livre blanc](https://shadowrook-crypto.github.io/NumFranc/LIVRE_BLANC.pdf) · [English](https://shadowrook-crypto.github.io/NumFranc/en.html)
+
 *English: NumFranc is a cryptocurrency written in Rust, with post-quantum ML-DSA-87 signatures, memory-hard Argon2d proof of work, a fixed 69.1 M cap and a single program (node + miner + wallet + GUI). Built with the help of Claude (Anthropic). Software provided **without warranty** (MIT licence). NumFranc aims to become a leading post-quantum payment infrastructure, used by individuals and businesses alike. Open-source software under development: no NFR for sale, no promise of value.*
 
 Cryptomonnaie à preuve de travail, avec signatures **post-quantiques ML-DSA-87** dès le premier bloc.

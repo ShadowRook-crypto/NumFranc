@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post-quantum cryptography: ML-DSA and SLH-DSA explained simply — NumFranc</title>
+<meta name="description" content="What is post-quantum cryptography? Why quantum computers threaten Bitcoin, and how ML-DSA (FIPS 204) and SLH-DSA (FIPS 205) protect NumFranc.">
+<link rel="canonical" href="https://shadowrook-crypto.github.io/NumFranc/post-quantum.html">
+<link rel="alternate" hreflang="fr" href="https://shadowrook-crypto.github.io/NumFranc/post-quantique.html">
+<link rel="alternate" hreflang="en" href="https://shadowrook-crypto.github.io/NumFranc/post-quantum.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Post-quantum cryptography: ML-DSA and SLH-DSA explained simply — NumFranc">
+<meta property="og:description" content="What is post-quantum cryptography? Why quantum computers threaten Bitcoin, and how ML-DSA (FIPS 204) and SLH-DSA (FIPS 205) protect NumFranc.">
+<meta property="og:url" content="https://shadowrook-crypto.github.io/NumFranc/post-quantum.html">
+<meta property="og:image" content="https://shadowrook-crypto.github.io/NumFranc/logo-256.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="langue"><a href="post-quantique.html" hreflang="fr">Français</a></div>
+  <img src="logo-256.png" alt="NumFranc" style="width:72px;height:72px">
+  <h1>Post-quantum</h1>
+  <p>Why quantum computers threaten today's cryptocurrencies, and how NumFranc protects itself.</p>
+  <nav class="pages"><a href="en.html">Home</a> <a href="how-it-works.html">How it works</a> <a href="post-quantum.html">Post-quantum</a> <a href="faq-en.html">FAQ</a></nav>
+</header>
+<main>
+
+  <h2>The threat</h2>
+  <p>The signatures used today by Bitcoin, Ethereum and most websites (elliptic curves, RSA) rely on mathematical problems that an ordinary computer would need billions of years to solve. A powerful enough <strong>quantum computer</strong> could solve them in hours using <strong>Shor's algorithm</strong> (1994). None exists yet, but experts advise preparing now, because changing signatures in a worldwide system takes years.</p>
+  <h2>The answer: new standards</h2>
+  <p>In August 2024, the US standards agency (NIST) published three standards designed to resist quantum computers:</p>
+  <table>
+    <tr><th>FIPS 203 — ML-KEM</th><td>agreeing on a secret key (lattices)</td></tr>
+    <tr><th>FIPS 204 — ML-DSA</th><td>digital signatures (lattices)</td></tr>
+    <tr><th>FIPS 205 — SLH-DSA</th><td>signatures built only from hash functions</td></tr>
+  </table>
+  <p>In France, ANSSI recommends not betting everything on one mathematical family, and considers SLH-DSA a conservative choice.</p>
+  <h2>What NumFranc does</h2>
+  <div class="grille">
+    <div class="carte"><h3>ML-DSA-87 for every payment</h3><p>The highest level of the standard (level 5), from the very first block: no migration needed.</p></div>
+    <div class="carte"><h3>SLH-DSA for every release</h3><p>Software releases are signed with another, hash-based mathematical family.</p></div>
+    <div class="carte"><h3>SHA3-512 everywhere</h3><p>512-bit fingerprints keep about 256 bits of security even against a quantum computer (Grover's algorithm).</p></div>
+    <div class="carte"><h3>Wallet encrypted twice</h3><p>AES-256 then XChaCha20, with two independent 256-bit keys derived by Argon2id.</p></div>
+  </div>
+  <h2>The trade-off</h2>
+  <p>Post-quantum signatures are larger (about 4.6&nbsp;KB for ML-DSA-87, versus 64 bytes for Bitcoin). NumFranc transactions are therefore heavier: a deliberate choice for long-term security.</p>
+
+  <p class="avertissement">NumFranc aims to become a leading post-quantum payment infrastructure, used by individuals and businesses alike. Open-source software under development: no NFR for sale, no promise of value.</p>
+</main>
+<footer>NumFranc — <a href="https://github.com/ShadowRook-crypto/NumFranc">GitHub</a></footer>
+</body>
+</html>

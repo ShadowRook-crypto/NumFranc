@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cryptographie post-quantique : ML-DSA et SLH-DSA expliqués simplement — NumFranc</title>
+<meta name="description" content="Qu'est-ce que la cryptographie post-quantique ? Pourquoi les ordinateurs quantiques menacent Bitcoin, et comment ML-DSA (FIPS 204) et SLH-DSA (FIPS 205) protègent NumFranc.">
+<link rel="canonical" href="https://shadowrook-crypto.github.io/NumFranc/post-quantique.html">
+<link rel="alternate" hreflang="fr" href="https://shadowrook-crypto.github.io/NumFranc/post-quantique.html">
+<link rel="alternate" hreflang="en" href="https://shadowrook-crypto.github.io/NumFranc/post-quantum.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Cryptographie post-quantique : ML-DSA et SLH-DSA expliqués simplement — NumFranc">
+<meta property="og:description" content="Qu'est-ce que la cryptographie post-quantique ? Pourquoi les ordinateurs quantiques menacent Bitcoin, et comment ML-DSA (FIPS 204) et SLH-DSA (FIPS 205) protègent NumFranc.">
+<meta property="og:url" content="https://shadowrook-crypto.github.io/NumFranc/post-quantique.html">
+<meta property="og:image" content="https://shadowrook-crypto.github.io/NumFranc/logo-256.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="langue"><a href="post-quantum.html" hreflang="en">English</a></div>
+  <img src="logo-256.png" alt="NumFranc" style="width:72px;height:72px">
+  <h1>Post-quantique</h1>
+  <p>Pourquoi les ordinateurs quantiques menacent les cryptomonnaies actuelles, et comment NumFranc s'en protège.</p>
+  <nav class="pages"><a href="index.html">Accueil</a> <a href="comment-ca-marche.html">Comment ça marche</a> <a href="post-quantique.html">Post-quantique</a> <a href="faq.html">Questions</a></nav>
+</header>
+<main>
+
+  <h2>La menace</h2>
+  <p>Les signatures utilisées aujourd'hui par Bitcoin, Ethereum et la plupart des sites web (courbes elliptiques, RSA) reposent sur des problèmes mathématiques qu'un ordinateur ordinaire met des milliards d'années à résoudre. Un <strong>ordinateur quantique</strong> assez puissant pourrait les résoudre en quelques heures grâce à l'<strong>algorithme de Shor</strong> (1994). Il n'en existe pas encore, mais les experts recommandent de s'y préparer dès maintenant, car changer de signature dans un système mondial prend des années.</p>
+  <h2>La réponse : de nouvelles normes</h2>
+  <p>En août 2024, l'agence américaine des normes (NIST) a publié trois normes conçues pour résister aux ordinateurs quantiques&nbsp;:</p>
+  <table>
+    <tr><th>FIPS 203 — ML-KEM</th><td>se mettre d'accord sur une clé secrète (réseaux euclidiens)</td></tr>
+    <tr><th>FIPS 204 — ML-DSA</th><td>signatures numériques (réseaux euclidiens)</td></tr>
+    <tr><th>FIPS 205 — SLH-DSA</th><td>signatures construites uniquement avec des fonctions de hachage</td></tr>
+  </table>
+  <p>En France, l'ANSSI recommande de ne pas tout parier sur une seule famille mathématique, et considère SLH-DSA comme un choix prudent.</p>
+  <h2>Ce que fait NumFranc</h2>
+  <div class="grille">
+    <div class="carte"><h3>ML-DSA-87 pour chaque paiement</h3><p>Le niveau le plus élevé de la norme (niveau 5), dès le premier bloc : aucune migration à prévoir.</p></div>
+    <div class="carte"><h3>SLH-DSA pour chaque version</h3><p>Les versions du logiciel sont signées avec une autre famille mathématique, basée sur le hachage.</p></div>
+    <div class="carte"><h3>SHA3-512 partout</h3><p>Les empreintes de 512 bits gardent environ 256 bits de sécurité même face à un ordinateur quantique (algorithme de Grover).</p></div>
+    <div class="carte"><h3>Portefeuille chiffré deux fois</h3><p>AES-256 puis XChaCha20, avec deux clés de 256 bits indépendantes dérivées par Argon2id.</p></div>
+  </div>
+  <h2>Le prix à payer</h2>
+  <p>Les signatures post-quantiques sont plus grandes (environ 4,6&nbsp;Ko pour ML-DSA-87, contre 64 octets pour Bitcoin). Les transactions de NumFranc sont donc plus lourdes&nbsp;: c'est le choix assumé de la sécurité à long terme.</p>
+
+  <p class="avertissement">NumFranc a l&rsquo;ambition de devenir une infrastructure de paiement post-quantique de référence, utilisée par les particuliers comme par les entreprises. Logiciel libre en développement&nbsp;: aucune vente de NFR, aucune promesse de valeur.</p>
+</main>
+<footer>NumFranc — <a href="https://github.com/ShadowRook-crypto/NumFranc">GitHub</a></footer>
+</body>
+</html>

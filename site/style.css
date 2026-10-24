@@ -1,0 +1,45 @@
+:root {
+    --nuit: #002654; --or: #E1000F; --clair: #AFC8E6; --fond: #f4f6fa; --texte: #1b2233; --doux: #5d6578;
+    --carte: #ffffff; --bord: #dfe3ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --fond: #12151c; --texte: #e8ebf2; --doux: #a3aabb; --carte: #1c212b; --bord: #2c3342; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fond); color: var(--texte); line-height: 1.6; }
+  header { background: var(--nuit); color: #fff; padding: 56px 16px 64px; text-align: center; }
+  header img { width: 120px; height: 120px; }
+  header h1 { font-size: 2.6rem; margin: 12px 0 4px; letter-spacing: .5px; }
+  header p { margin: 0 auto; max-width: 640px; color: #c9d3ea; font-size: 1.15rem; }
+  .bouton.secondaire { background: transparent; color: #fff; border: 2px solid var(--clair); margin-left: 8px; }
+  .bouton { display: inline-block; margin-top: 24px; background: var(--or); color: #FFFFFF; font-weight: 700; padding: 12px 26px; border-radius: 8px; text-decoration: none; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 48px; }
+  h2 { font-size: 1.6rem; margin: 40px 0 12px; }
+  .histoire { font-size: 1.08rem; max-width: 760px; }
+  .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .carte { background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; padding: 18px 20px; }
+  .carte h3 { margin: 0 0 6px; font-size: 1.08rem; }
+  .carte p { margin: 0; color: var(--doux); }
+  table { width: 100%; border-collapse: collapse; background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; overflow: hidden; }
+  td, th { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--bord); }
+  th { width: 40%; color: var(--doux); font-weight: 600; }
+  ol li { margin-bottom: 6px; }
+  .langue { position: absolute; top: 14px; right: 16px; }
+  .langue a { color: #c9d3ea; text-decoration: none; border: 1px solid #4a5f8a; border-radius: 6px; padding: 4px 10px; font-size: .9rem; }
+  header { position: relative; }
+  .systemes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .systemes .carte h3 { font-size: 1.2rem; }
+  .systemes .telecharge { display: inline-block; margin: 8px 0 10px; background: var(--nuit); color: #fff; font-weight: 700; padding: 9px 16px; border-radius: 8px; text-decoration: none; }
+  @media (prefers-color-scheme: dark) { .systemes .telecharge { background: #2c4a86; } }
+  .systemes ol { margin: 0; padding-left: 20px; color: var(--doux); }
+  .systemes small { color: var(--doux); display: block; margin-top: 8px; }
+  .avertissement { border-left: 4px solid var(--nuit); background: var(--carte); padding: 14px 18px; border-radius: 6px; color: var(--doux); }
+  footer { text-align: center; color: var(--doux); padding: 24px 16px 40px; font-size: .9rem; }
+  code { background: var(--carte); border: 1px solid var(--bord); border-radius: 4px; padding: 1px 6px; overflow-wrap: anywhere; }
+
+  .fil { font-size: .95rem; margin-bottom: 8px; } .fil a { color: inherit; }
+  nav.pages { margin-top: 18px; } nav.pages a { color: #c9d3ea; margin: 0 8px; text-decoration: none; border-bottom: 1px solid #4a5f8a; }
+  details { background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+  summary { font-weight: 700; cursor: pointer; }
+  details p { color: var(--doux); margin: 10px 0 0; }
+  main a { color: #2c5bb8; } @media (prefers-color-scheme: dark) { main a { color: #8fb0ef; } }

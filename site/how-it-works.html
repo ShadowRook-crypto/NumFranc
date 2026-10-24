@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How NumFranc works — blocks, mining and post-quantum signatures</title>
+<meta name="description" content="How NumFranc works, explained simply: transactions, blocks, Argon2 mining, post-quantum ML-DSA signatures, a network with no central server.">
+<link rel="canonical" href="https://shadowrook-crypto.github.io/NumFranc/how-it-works.html">
+<link rel="alternate" hreflang="fr" href="https://shadowrook-crypto.github.io/NumFranc/comment-ca-marche.html">
+<link rel="alternate" hreflang="en" href="https://shadowrook-crypto.github.io/NumFranc/how-it-works.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="How NumFranc works — blocks, mining and post-quantum signatures">
+<meta property="og:description" content="How NumFranc works, explained simply: transactions, blocks, Argon2 mining, post-quantum ML-DSA signatures, a network with no central server.">
+<meta property="og:url" content="https://shadowrook-crypto.github.io/NumFranc/how-it-works.html">
+<meta property="og:image" content="https://shadowrook-crypto.github.io/NumFranc/logo-256.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="langue"><a href="comment-ca-marche.html" hreflang="fr">Français</a></div>
+  <img src="logo-256.png" alt="NumFranc" style="width:72px;height:72px">
+  <h1>How it works</h1>
+  <p>NumFranc explained simply, from your first payment to a mined block.</p>
+  <nav class="pages"><a href="en.html">Home</a> <a href="how-it-works.html">How it works</a> <a href="post-quantum.html">Post-quantum</a> <a href="faq-en.html">FAQ</a></nav>
+</header>
+<main>
+
+  <h2>1. A ledger kept by everyone</h2>
+  <p>A digital currency is a big ledger saying who owns what. With a bank, the bank keeps it. With NumFranc, <strong>every computer on the network keeps a full copy</strong> and checks every operation itself. Nobody can change it alone.</p>
+  <h2>2. Your wallet and your keys</h2>
+  <p>Your wallet holds a <strong>private key</strong> that never leaves your computer, and public <strong>addresses</strong> (<code>NFR1-…</code>) that you share to get paid. To pay, the wallet <strong>signs</strong> the payment with the private key; anyone can verify the signature, nobody can forge it. NumFranc uses ML-DSA-87, a signature designed to resist future quantum computers (<a href="post-quantum.html">learn more</a>).</p>
+  <h2>3. Unspent coins</h2>
+  <p>There are no "accounts" with a balance: there are <strong>coins</strong> (outputs of earlier payments). Paying means spending one or more coins and creating new ones: one for the recipient and the change for you. Your balance is the sum of your coins — the same model as Bitcoin.</p>
+  <h2>4. Blocks and the chain</h2>
+  <p>About every 691 seconds, pending payments are grouped into a <strong>block</strong>. Each block contains the SHA3-512 fingerprint of the previous one: changing an old block would break all the following ones. This <strong>chain of blocks</strong> makes history tamper-proof.</p>
+  <h2>5. Mining</h2>
+  <p>To add a block, a computer must find, by trial and error, a fingerprint smaller than a target: this is <strong>proof of work</strong>. NumFranc uses <strong>Argon2d</strong>, which makes every attempt fill 4&nbsp;MiB of memory, so specialised machines lose most of their edge and an ordinary computer stays competitive. The first to succeed gets the block reward (6.91 NFR today) plus fees. Difficulty adjusts every 691 blocks to keep the pace.</p>
+  <h2>6. A network with no central server</h2>
+  <p>Computers find each other on their own: on your local network, then worldwide through a distributed directory. NumFranc also opens the port on your router automatically (UPnP, NAT-PMP, PCP) so others can reach you.</p>
+  <h2>7. Protections</h2>
+  <div class="grille">
+    <div class="carte"><h3>Against cheating</h3><p>Every computer checks everything itself: signatures, amounts, rules.</p></div>
+    <div class="carte"><h3>Against rewriting</h3><p>Chain chosen by accumulated work, rewrites limited to 10 blocks, checkpoints.</p></div>
+    <div class="carte"><h3>Against theft</h3><p>Wallet encrypted twice, separate spending code, cancellable held payments.</p></div>
+    <div class="carte"><h3>Against fake versions</h3><p>Every release is signed with SLH-DSA (post-quantum) and checked twice before installing.</p></div>
+  </div>
+
+  <p class="avertissement">NumFranc aims to become a leading post-quantum payment infrastructure, used by individuals and businesses alike. Open-source software under development: no NFR for sale, no promise of value.</p>
+</main>
+<footer>NumFranc — <a href="https://github.com/ShadowRook-crypto/NumFranc">GitHub</a></footer>
+</body>
+</html>
